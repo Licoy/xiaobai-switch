@@ -131,6 +131,7 @@ jobs:
           go build -o .build/tools/mygo${{ runner.os == 'Windows' && '.exe' || '' }} github.com/egoist/mygo/cmd/mygo
           echo "NATIVE_REAL_GO=$(go env GOROOT)/bin/go${{ runner.os == 'Windows' && '.exe' || '' }}" >> "$GITHUB_ENV"
       - name: Configure self-signed Apple identity
+        timeout-minutes: 5
         if: runner.os == 'macOS'
         env:
           CERT: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
@@ -148,16 +149,17 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security list-keychains -d user -s "$KEYCHAIN"
           security find-certificate -c "$APPLE_SIGNING_IDENTITY" -p "$KEYCHAIN" > "$RUNNER_TEMP/native-signing.pem"
-          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k "$KEYCHAIN" "$RUNNER_TEMP/native-signing.pem"
           FINGERPRINT="$(openssl x509 -in "$RUNNER_TEMP/native-signing.pem" -noout -fingerprint -sha1 | cut -d= -f2 | tr -d ':')"
           [[ "$FINGERPRINT" =~ ^[A-Fa-f0-9]{40}$ ]]
           echo "APPLE_SIGNING_CERT_SHA1=$FINGERPRINT" >> "$GITHUB_ENV"
           cp /usr/bin/true "$RUNNER_TEMP/native-sign-probe"
-          codesign --force --sign "$APPLE_SIGNING_IDENTITY" --keychain "$KEYCHAIN" "$RUNNER_TEMP/native-sign-probe"
+          echo "Verify the imported Apple identity without changing system trust"
+          codesign --force --sign "$FINGERPRINT" --keychain "$KEYCHAIN" --options runtime --timestamp "$RUNNER_TEMP/native-sign-probe"
           codesign --verify --strict -R "=certificate leaf = H\"$FINGERPRINT\"" "$RUNNER_TEMP/native-sign-probe"
           rm "$RUNNER_TEMP/native-sign-probe"
           rm "$RUNNER_TEMP/cert.p12"
       - name: Configure Windows signing and NSIS
+        timeout-minutes: 5
         if: runner.os == 'Windows'
         shell: pwsh
         env:
@@ -175,8 +177,12 @@ jobs:
           $public = Join-Path $env:RUNNER_TEMP 'native-signing.cer'
           Export-Certificate -Cert $signers[0] -FilePath $public | Out-Null
           "WINDOWS_SIGN_CERT_SHA1=$($signers[0].Thumbprint)" >> $env:GITHUB_ENV
+          $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
+          if (!$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Ephemeral runner administrator required for unattended certificate trust' }
           foreach ($store in @('Root', 'TrustedPublisher')) {
-            Import-Certificate -FilePath $public -CertStoreLocation "Cert:\CurrentUser\$store" | Out-Null
+            Write-Host "Import public signing certificate into LocalMachine\$store"
+            Import-Certificate -FilePath $public -CertStoreLocation "Cert:\LocalMachine\$store" -Confirm:$false | Out-Null
+            Write-Host "Imported public signing certificate into LocalMachine\$store"
           }
           "WINDOWS_SIGN_CERT_FILE=$certificate" >> $env:GITHUB_ENV
           "MAKENSIS=C:\Program Files (x86)\NSIS\makensis.exe" >> $env:GITHUB_ENV
@@ -213,26 +219,25 @@ jobs:
         if: always()
         shell: bash
         run: |
-          rm -f "$RUNNER_TEMP/native-signing.pfx" "$RUNNER_TEMP/cert.p12"
-          if [ "$RUNNER_OS" = macOS ]; then
-            if [ -f "$RUNNER_TEMP/native-signing.pem" ]; then
-              sudo security remove-trusted-cert -d "$RUNNER_TEMP/native-signing.pem"
-              rm "$RUNNER_TEMP/native-signing.pem"
-            fi
-          fi
+          echo "Remove temporary signing files"
+          rm -f "$RUNNER_TEMP/native-signing.pfx" "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/native-signing.pem" "$RUNNER_TEMP/native-sign-probe"
       - name: Remove Apple temporary keychain
+        timeout-minutes: 2
         if: always() && runner.os == 'macOS'
         run: |
+          echo "Delete the temporary Apple signing keychain"
           if [ -f "$RUNNER_TEMP/native-signing.keychain-db" ]; then security delete-keychain "$RUNNER_TEMP/native-signing.keychain-db"; fi
       - name: Remove Windows temporary certificate trust
+        timeout-minutes: 2
         if: always() && runner.os == 'Windows'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           if ($env:WINDOWS_SIGN_CERT_SHA1) {
             foreach ($store in @('Root', 'TrustedPublisher')) {
-              $cert = "Cert:\CurrentUser\$store\$env:WINDOWS_SIGN_CERT_SHA1"
-              if (Test-Path $cert) { Remove-Item $cert }
+              $cert = "Cert:\LocalMachine\$store\$env:WINDOWS_SIGN_CERT_SHA1"
+              Write-Host "Remove public signing certificate from LocalMachine\$store"
+              if (Test-Path $cert) { Remove-Item -LiteralPath $cert -Confirm:$false }
             }
           }
           $public = Join-Path $env:RUNNER_TEMP 'native-signing.cer'

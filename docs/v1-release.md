@@ -32,9 +32,9 @@ MyGo CLI 自行传入 `-ldflags`，因此发布使用 `scripts/native-release-go
 
 Windows 专用自签证书保存在同一 `0700` 目录内的 `xiaobai-switch-windows.pfx`、`xiaobai-switch-windows.password` 与 `xiaobai-switch-windows.crt`，三文件均为 `0600`，RSA 3072、Code Signing EKU、Digital Signature 用途及 PFX 密码/公私钥配对验证通过，有效期为 2026-10-23 09:35:47 UTC 至 2031-10-22 09:35:47 UTC，SHA1 为 `02FA395F1760D270B49FF44C1B810E7280E4DFA8`，两项 Windows secrets 已配置，未改本机信任；实际 Authenticode 与完整签名打包仍待 CI
 
-Apple 身份导入 runner 临时 keychain，仅在临时 CI runner 添加此证书的管理员域 codeSign 信任，实际 codesign 验签要求叶证书 SHA1 与导入证书相同；MyGo 生成的自签 DMG 验签后重新编码为 unsigned DMG，校验容器完整性且确认无签名，内部 app 保留原签名，不调用公证或 stapler；处理方式参考 [CPA-Bar 发布工作流](https://github.com/Licoy/CPA-Bar/blob/main/.github/workflows/release.yml)，未复制业务代码
+Apple 身份仅导入 runner 临时 keychain，不修改系统或用户证书信任；签名按导入证书 SHA1 精确选择身份，实际 codesign 验签要求叶证书 SHA1 与导入证书相同；MyGo 生成的自签 DMG 验签后重新编码为 unsigned DMG，校验容器完整性且确认无签名，内部 app 保留原签名，不调用公证或 stapler；处理方式参考 [CPA-Bar 发布工作流](https://github.com/Licoy/CPA-Bar/blob/main/.github/workflows/release.yml)，未复制业务代码
 
-Windows 从 PFX 导出公共证书，仅导入 runner `CurrentUser\Root` 与 `CurrentUser\TrustedPublisher`，不把私钥导入用户证书库；对 payload、uninstaller、setup 均做 Authenticode，要求 `signtool verify /pa` 和签名证书 thumbprint 校验通过，再生成 Ed25519 与 minisign 更新签名，CI 最后删除信任记录与证书文件
+Windows 从 PFX 导出公共证书，仅导入临时 runner `LocalMachine\Root` 与 `LocalMachine\TrustedPublisher`，使用管理员权限并显式 `-Confirm:$false`，避免用户根信任交互确认，不把私钥导入用户证书库；对 payload、uninstaller、setup 均做 Authenticode，要求 `signtool verify /pa` 和签名证书 thumbprint 校验通过，再生成 Ed25519 与 minisign 更新签名，CI 最后删除信任记录与证书文件
 
 自签不等于 Apple notarization 或 Windows SmartScreen reputation，首次启动仍可能要求系统确认；unsigned DMG 只移除容器额外的 Gatekeeper 拒绝，不承诺 app 自动受信任，依据 [Apple TN2206](https://developer.apple.com/library/archive/technotes/tn2206/_index.html) 与 [Microsoft Import-Certificate](https://learn.microsoft.com/en-us/powershell/module/pki/import-certificate)
 
@@ -97,7 +97,7 @@ Native Release preflight 先按 tag checkout 并输出 commit SHA，提前要求
 
 `SHA256SUMS` 覆盖所有 release 文件但不包含自身；流程先创建 draft 并上传，再完整下载所有 assets 校验 SHA256，全部一致后才公开；prerelease 使用 latest=false，稳定版才设置 latest；preflight/build 为 contents:read，只有 publish 为 contents:write
 
-Windows payload、uninstaller、setup 在 Authenticode 签名后各自执行 `signtool verify /pa`；Apple 临时 keychain 解锁有效期为 21600 秒，完成后移除 runner 管理员域证书信任并删除 keychain，凭据已导出并配置，完整平台自签与更新签名仍需 Actions 验证
+Windows payload、uninstaller、setup 在 Authenticode 签名后各自执行 `signtool verify /pa`；Apple 临时 keychain 解锁有效期为 21600 秒，完成后直接删除临时 keychain，不再调用可能等待交互的 Apple 信任删除 API，凭据已导出并配置，完整平台自签与更新签名仍需 Actions 验证
 
 更新日志范围排除当前同点 tag，stable 以上一 stable 为边界以包含 prerelease 中的改动，prerelease 可以上一 prerelease 为边界，未来 HEAD/tag 不混入；脚本用临时 git repo 测试这些边界，多行 secret 的日志脱敏亦有实际进程输出测试
 
@@ -124,3 +124,11 @@ Windows payload、uninstaller、setup 在 Authenticode 签名后各自执行 `si
 此前自签准备轮次协作：`/root/signing_credentials` 与 `/root/self_signed_release` 完成凭证定位、新 key 验证及自签流程，当时未提交、推送、上传 GitHub secrets 或发布
 
 本轮协作：`/root/release_version` 负责版本与 Windows 业务兼容修复，`/root/self_signed_release` 负责自签流水线与打包修复，`/root/signing_credentials` 负责凭据配置与本文状态收尾；工具接受 `gpt-6.1-sol` / `medium` 参数，底层执行模型未独立认证，发布与跨平台验收状态以上述 CI 进度为准
+
+## 首次发布 CI 交互修复
+
+首轮 Windows Native Release 在用户根证书导入处等待交互，macOS 两目标已完成构建与上传，但在管理员域信任删除处卡住；Apple 现仅用临时 keychain 与精确 SHA1 身份，不新增系统信任，Windows 改为仅临时 runner 的 LocalMachine 公共证书信任，结束按相同 SHA1 删除；配置步骤限时 5 分钟、证书清理限时 2 分钟并输出阶段日志，失败不会跳过验签或继续发布
+
+本机用新建短期自签 fixture 证书、独立临时 keychain 和复制的 `/usr/bin/true` 验证，未修改搜索列表、默认 keychain 或任何证书信任；`codesign --options runtime --timestamp=none --sign SHA1 --keychain TEMP` 和 strict exact-leaf 验签均通过，临时私钥与 keychain 已清理；额外 `--timestamp` 尝试明确返回 `The timestamp service is not available`，生产配置仍保留 mygo 的时间戳要求，不把本机服务连接失败当作签名成功
+
+依据 [Microsoft Import-Certificate](https://learn.microsoft.com/en-us/powershell/module/pki/import-certificate) 明确的 LocalMachine 与 Confirm 参数，以及 [Apple 信任 API 文档](https://developer.apple.com/documentation/security/sectrustsettingssettrustsettings(_:_:_:)) 记载的交互阻塞边界实施；四份 Node 发布测试 12/12 passed、Native Release actionlint 与 diff 检查通过，最终无人值守执行仍由下一轮真实 CI 验收

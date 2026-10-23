@@ -23,7 +23,7 @@ export function preflight(env,target){
 export function macSigningConfig(env){
  if(!env.APPLE_SIGNING_IDENTITY||env.APPLE_SIGNING_IDENTITY==='-')throw new Error('macOS certificate identity required; ad hoc signing is not a release signature')
  if(!/^[A-Fa-f0-9]{40}$/.test(env.APPLE_SIGNING_CERT_SHA1??''))throw new Error('invalid Apple certificate SHA1')
- return {minimumSystemVersion:'12.0',signingIdentity:env.APPLE_SIGNING_IDENTITY}
+ return {minimumSystemVersion:'12.0',signingIdentity:env.APPLE_SIGNING_CERT_SHA1}
 }
 export function build(target,env=process.env){
  const keys=preflight(env,target),v=version(env.RELEASE_VERSION),root=process.cwd()
