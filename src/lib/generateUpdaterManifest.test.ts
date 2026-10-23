@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { generateKeyPairSync, createHash, sign } from "node:crypto";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const manifestModule =
   // @ts-expect-error The workflow helper is native ESM without TypeScript declarations.
@@ -7,6 +8,7 @@ const {
   buildUpdaterManifest,
   classifySignature,
   updaterNotesFromReleaseBody,
+  main,
 } = manifestModule;
 
 function assetPair(name: string, id: number) {
@@ -112,5 +114,65 @@ describe("updater manifest generation", () => {
         signatures,
       }),
     ).toThrow("missing updater platforms: darwin-x86_64, darwin-x86_64-app");
+  });
+});
+
+// Exercise the actual draft upload path without contacting GitHub or reading credentials.
+describe("bridge updater publication", () => {
+  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+
+  function publication(tag: string, failAlias = false) {
+    vi.stubEnv("GITHUB_TOKEN", "fixture-token");
+    vi.stubEnv("GITHUB_REPOSITORY", "Licoy/xiaobai-switch");
+    vi.stubEnv("GITHUB_REF_NAME", tag);
+    vi.stubEnv("GITHUB_API_URL", "https://api.example.test");
+    vi.stubEnv("GITHUB_SERVER_URL", "https://github.com");
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const pub = publicKey.export({ type: "spki", format: "der" }).subarray(-32);
+    const payload = Buffer.from("installer fixture"), id = Buffer.alloc(8);
+    const sig = sign(null, createHash("blake2b512").update(payload).digest(), privateKey);
+    const packet = Buffer.concat([Buffer.from("ED"), id, sig]);
+    const comment = "fixture";
+    const signature = Buffer.from(`untrusted comment: fixture\n${packet.toString("base64")}\ntrusted comment: ${comment}\n${sign(null, Buffer.concat([sig, Buffer.from(comment)]), privateKey).toString("base64")}\n`).toString("base64");
+    const tauriPublicKey = Buffer.from(`untrusted comment: fixture\n${Buffer.concat([Buffer.from("Ed"), id, pub]).toString("base64")}\n`).toString("base64");
+    const uploads = new Map<string, string>();
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options: RequestInit) => {
+      if (options.method === "POST") {
+        const name = new URL(url).searchParams.get("name")!;
+        if (failAlias && name === "native-transition.json") return new Response("upload failed", { status: 500 });
+        uploads.set(name, options.body as string);
+        return Response.json({});
+      }
+      if (url.includes("/releases?")) return Response.json([{ id: 123, tag_name: tag, draft: true, body: "Bridge release", upload_url: "https://uploads.example.test/assets{?name,label}" }]);
+      if (url.includes("/releases/123/assets?")) return Response.json(assets);
+      if (/\/releases\/assets\/\d+$/.test(url)) return new Response(signature);
+      throw new Error(`Unexpected GitHub request: ${url}`);
+    }));
+    return { uploads, payload, tauriPublicKey, signature };
+  }
+
+  it.each(["v0.0.11", "v0.0.12"])("publishes a complete transition alias only for bridge %s", async (tag) => {
+    const fixture = publication(tag);
+    await main();
+    const manifest = JSON.parse(fixture.uploads.get("latest.json")!);
+    expect(manifest.version).toBe(tag.slice(1));
+    expect(Object.keys(manifest.platforms)).toHaveLength(9);
+    if (tag === "v0.0.12") {
+      expect(fixture.uploads.get("native-transition.json")).toBe(fixture.uploads.get("latest.json"));
+      // @ts-expect-error The release helper is native ESM without TypeScript declarations.
+      const { verifyTauriSignature } = await import("../../scripts/native-release-lib.mjs");
+      for (const platform of Object.values(manifest.platforms) as { signature: string; url: string }[]) {
+        expect(platform.url).toContain("/releases/download/v0.0.12/");
+        expect(platform.signature).toBe(fixture.signature);
+        expect(verifyTauriSignature(fixture.payload, platform.signature, fixture.tauriPublicKey)).toBe(true);
+      }
+    } else {
+      expect([...fixture.uploads.keys()]).toEqual(["latest.json"]);
+    }
+  });
+
+  it("fails the publication step if the bridge alias cannot upload", async () => {
+    publication("v0.0.12", true);
+    await expect(main()).rejects.toThrow("500 upload failed");
   });
 });

@@ -1,0 +1,66 @@
+name: Native Check
+on:
+  push:
+    branches: [v1, main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.27.1
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Native tests and vet
+        shell: bash
+        run: |
+          node scripts/native-release-log.mjs .build/native-check-logs/tests.log go test -race ./internal/...
+          node scripts/native-release-log.mjs .build/native-check-logs/tests.log go vet ./internal/...
+          node scripts/native-release-log.mjs .build/native-check-logs/tests.log node --test scripts/native-release-lib.test.mjs scripts/native-release-metadata.test.mjs scripts/native-release-sign.test.mjs scripts/native-transition.test.mjs
+      - name: Validate NSIS updater lifecycle on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install nsis --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS installation failed' }
+          $env:MAKENSIS = 'C:\Program Files (x86)\NSIS\makensis.exe'
+          $env:NATIVE_REAL_GO = (Get-Command go).Source
+          node scripts/native-release-log.mjs .build/native-check-logs/installer.log node scripts/native-check-installer.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS lifecycle failed' }
+      - name: Build six pure native targets
+        shell: bash
+        run: |
+          export NATIVE_REAL_GO="$(go env GOROOT)/bin/go${{ runner.os == 'Windows' && '.exe' || '' }}"
+          node scripts/native-release-log.mjs .build/native-check-logs/build.log node scripts/native-check.mjs
+      - name: Run host smoke without application data
+        shell: bash
+        run: |
+          export XIAOBAI_DEV_HOME=invalid-relative-home
+          case "$RUNNER_OS" in
+            macOS) BIN=.build/native-check/XiaoBaiSwitch-darwin-arm64;;
+            Windows) BIN=.build/native-check/XiaoBaiSwitch-windows-amd64.exe;;
+            Linux) BIN=.build/native-check/XiaoBaiSwitch-linux-amd64;;
+          esac
+          node scripts/native-release-log.mjs .build/native-check-logs/smoke.log "$BIN" --native-smoke
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-crossbuild-${{ runner.os }}
+          path: .build/native-check/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-check-diagnostics-${{ runner.os }}
+          path: .build/native-check-logs/*.log
+          if-no-files-found: warn

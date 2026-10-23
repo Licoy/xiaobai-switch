@@ -1,12 +1,46 @@
 ---
 import { Icon } from "astro-icon/components";
-
-interface Props {
-  name: string;
-  class?: string;
-}
-
+interface Props { name: string; class?: string }
 const { name, class: className = "size-4" } = Astro.props;
+const aliases: Record<string, string> = {
+  "lucide:terminal": "terminal-line",
+  "lucide:github": "github-line",
+  "lucide:download": "download-line",
+  "lucide:menu": "menu-line",
+  "lucide:book-open": "book-open-line",
+  "lucide:list": "menu-line",
+  "lucide:list-tree": "menu-line",
+  "lucide:chevron-down": "arrow-down-s-line",
+  "lucide:monitor": "computer-line",
+  "lucide:moon": "moon-line",
+  "lucide:sun": "sun-line",
+  "lucide:arrow-left": "arrow-left-line",
+  "lucide:arrow-right": "arrow-right-line",
+  "lucide:app-window": "window-line",
+  "lucide:archive": "archive-line",
+  "lucide:bot": "robot-line",
+  "lucide:boxes": "apps-line",
+  "lucide:git-branch": "git-branch-line",
+  "lucide:link": "links-line",
+  "lucide:lock-keyhole": "lock-line",
+  "lucide:server": "server-line",
+  "lucide:sparkles": "sparkling-line",
+  "lucide:info": "information-line",
+  "lucide:rocket": "rocket-line",
+  "lucide:settings": "settings-line",
+  "lucide:shield": "shield-line",
+  "lucide:circle-help": "question-line",
+  "lucide:file-text": "file-text-line",
+  "lucide:house": "home-line"
+};
+aliases["tabler:brand-apple"] = "apple-line";
+aliases["tabler:brand-windows"] = "windows-line";
+const brands: Record<string, string> = { "lobe:claude": "ClaudeCode", "lobe:codex": "Codex", "lobe:pi": "Pi" };
+const glyph = brands[name] ?? aliases[name] ?? (name.startsWith("remix:") ? name.slice(6) : undefined);
+const icons = import.meta.glob("../assets/icons/*.svg", { query: "?raw", import: "default", eager: true });
+const svg = glyph ? icons[`../assets/icons/${glyph}.svg`] as string | undefined : undefined;
+if (glyph && !svg) throw new Error(`Missing official Remix icon: ${name}`);
+if (!glyph && !name.startsWith("circle-flags:")) throw new Error(`Unmapped UI icon: ${name}`);
 ---
-
-<Icon name={name} class={className} aria-hidden="true" />
+{svg ? <span class:list={["ui-icon", className]} aria-hidden="true" set:html={svg} /> : <Icon name={name} class={className} aria-hidden="true" />}
+<style>.ui-icon { display: inline-flex; flex-shrink: 0; vertical-align: -0.125em; } .ui-icon :global(svg) { width: 100%; height: 100%; }</style>

@@ -14,7 +14,9 @@ export type AssetKind =
   | "win-x64-nsis"
   | "win-x64-zip"
   | "win-arm-nsis"
-  | "win-arm-zip";
+  | "win-arm-zip"
+  | "linux-x64"
+  | "linux-arm";
 
 export type AssetMap = Partial<Record<AssetKind, { name: string; url: string }>>;
 
@@ -26,13 +28,22 @@ export type LatestRelease = {
 export function classifyAsset(name: string): AssetKind | null {
   const n = name.toLowerCase();
   if (n.endsWith(".sig") || n.endsWith(".json") || n.includes(".app.tar.gz")) return null;
+  const native = /^xiaobaiswitch_.+_(darwin|windows|linux)-(amd64|arm64)(\.dmg|\.zip|-setup\.exe|\.tar\.gz)$/.exec(n);
+  if (native) {
+    const [, os, arch, extension] = native;
+    if (os === "darwin" && extension === ".dmg") return arch === "arm64" ? "mac-arm" : "mac-intel";
+    if (os === "linux" && extension === ".tar.gz") return arch === "arm64" ? "linux-arm" : "linux-x64";
+    if (os === "windows" && extension === ".zip") return arch === "arm64" ? "win-arm-zip" : "win-x64-zip";
+    if (os === "windows" && extension === "-setup.exe") return arch === "arm64" ? "win-arm-nsis" : "win-x64-nsis";
+    return null;
+  }
   if (n.endsWith(".dmg") && /aarch64|arm64/.test(n)) return "mac-arm";
-  if (n.endsWith(".dmg") && /(x64|x86_64)/.test(n)) return "mac-intel";
+  if (n.endsWith(".dmg") && /(x64|x86_64|amd64)/.test(n)) return "mac-intel";
   if (n.endsWith(".msi") && n.includes("x64")) return "win-x64-msi";
-  if (n.includes("x64-setup.exe")) return "win-x64-nsis";
-  if (n.includes("arm64-setup.exe")) return "win-arm-nsis";
-  if (n.includes("windows-x64-portable.zip")) return "win-x64-zip";
-  if (n.includes("windows-arm64-portable.zip")) return "win-arm-zip";
+  if (n.endsWith("x64-setup.exe")) return "win-x64-nsis";
+  if (n.endsWith("arm64-setup.exe")) return "win-arm-nsis";
+  if (n.endsWith("windows-x64-portable.zip")) return "win-x64-zip";
+  if (n.endsWith("windows-arm64-portable.zip")) return "win-arm-zip";
   return null;
 }
 
@@ -56,44 +67,26 @@ type GithubReleasePayload = Parameters<typeof assetsFromRelease>[0] & {
   draft?: boolean;
 };
 
-function requireBakedRelease(tag?: string): boolean {
-  return Boolean(tag?.trim() || process.env.CI);
-}
-
 export async function loadLatestRelease(
   token?: string,
   tag?: string,
-): Promise<LatestRelease | null> {
-  const url = githubReleaseApiUrl(tag);
-  const required = requireBakedRelease(tag);
-  try {
-    const headers: Record<string, string> = {
-      Accept: "application/vnd.github+json",
-      "User-Agent": "xiaobai-switch-website",
-    };
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch(url, { headers });
-    if (!res.ok) {
-      if (required) {
-        throw new Error(`Failed to load GitHub release ${tag?.trim() || "latest"}: ${res.status}`);
-      }
-      return null;
-    }
-    const payload = (await res.json()) as GithubReleasePayload;
-    if (payload.draft) {
-      throw new Error(
-        `GitHub release ${payload.tag_name ?? tag ?? "unknown"} is still a draft`,
-      );
-    }
-    const latest = assetsFromRelease(payload);
-    if (required && Object.keys(latest.assets).length === 0) {
-      throw new Error(
-        `GitHub release ${latest.tag || tag || "latest"} has no installer assets`,
-      );
-    }
-    return latest;
-  } catch (error) {
-    if (required) throw error;
-    return null;
+): Promise<LatestRelease> {
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "xiaobai-switch-website",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(githubReleaseApiUrl(tag), { headers });
+  if (!res.ok) {
+    throw new Error(`Failed to load GitHub release ${tag?.trim() || "latest"}: ${res.status}`);
   }
+  const payload = (await res.json()) as GithubReleasePayload;
+  if (payload.draft) {
+    throw new Error(`GitHub release ${payload.tag_name ?? tag ?? "unknown"} is still a draft`);
+  }
+  const latest = assetsFromRelease(payload);
+  if (Object.keys(latest.assets).length === 0) {
+    throw new Error(`GitHub release ${latest.tag || tag || "latest"} has no installer assets`);
+  }
+  return latest;
 }

@@ -10,7 +10,7 @@ order: 14
 
 ## 应用成功了，CLI 还是旧地址
 
-重启终端，或完全退出再打开 Claude Code / Codex / Pi。应用只写配置文件，不会热替换已经启动的进程；Pi 可打开 `/model` 重新加载模型列表。
+重启终端，或完全退出再打开 Claude Code / Codex / Pi / Prime。应用只写配置文件，不会热替换已经启动的进程；Pi 可打开 `/model` 重新加载模型列表。
 
 ## 如何查看完整 API Key？
 
@@ -22,7 +22,7 @@ order: 14
 
 ## 支持 Linux 吗？
 
-当前发布包是 macOS 与 Windows。
+原生 1.x 提供 Linux x64 / ARM64 的 `.tar.gz`，需要 GTK 3，托盘另需 `libayatana-appindicator3`；以下载页实际 Release 文件为准，发行版兼容性仍待实机验证。
 
 ## 官网地址是什么？
 

@@ -1,34 +1,25 @@
 ---
-title: 安装
-description: 从 GitHub Releases 下载 macOS 与 Windows 安装包，处理 macOS「已损坏」提示。
+title: 安装与迁移
+description: 原生六平台安装包、系统要求与 0.0.12 过渡迁移
 order: 2
 ---
 
-支持 **macOS**（Apple Silicon / Intel）与 **Windows**（x64 / ARM64）。请到 [Releases](https://github.com/Licoy/xiaobai-switch/releases) 下载对应安装包，或打开官网 [下载页](/download/)。
+## 原生 1.x 与迁移
 
-## 安装包形态
+XiaoBaiSwitch 1.x 使用 mygo 0.6.2 与纯 Go 原生 UI，旧 React / Tauri 源仅用于 0.0.12 过渡版；主窗采用统一 224px 侧栏，品牌色 #0C76F8，通用图标使用 Remix line，目标品牌使用 Lobe 图标。
 
-| 平台 | 安装包 |
-|------|--------|
-| macOS Apple Silicon | `.dmg`（aarch64） |
-| macOS Intel | `.dmg`（x86_64） |
-| Windows x64 | `.msi` / NSIS `.exe`，另有 portable zip |
-| Windows ARM64 | 仅 NSIS `.exe`，另有 portable zip |
+从 0.0.11 升级时，先安装 [0.0.12 过渡版](https://github.com/Licoy/xiaobai-switch/releases/tag/v0.0.12)，再升级至原生 1.x，macOS 11 请停留在过渡版，原生版需要 macOS 12 或更高版本。
 
-## macOS 提示「已损坏」
+应用数据继续使用 `~/.xiaobai-switch/`，包含数据库与 `master.key`，应用 ZIP 备份恢复这两者，不会自动修改 Claude Code、Codex、Pi、Prime 的 CLI 配置；恢复应用数据后如需同步，请在应用中心确认后重新应用。
 
-macOS 安装包是 **ad-hoc 签名**（未使用 Apple Developer ID，也未公证）。浏览器下载后，系统可能提示「已损坏」——这是隔离属性，不是文件坏了。**「隐私与安全性」不会出现「仍要打开」。**
+## 下载与安装
 
-把应用拖到「应用程序」后执行：
+从 [下载页](https://xiaobaiswitch.com/download/) 或 [Releases](https://github.com/Licoy/xiaobai-switch/releases) 选择当前版本实际提供的平台与架构文件。
 
-```bash
-xattr -cr /Applications/XiaoBaiSwitch.app
-```
+| 平台 | 原生安装包与运行要求 |
+|---|---|
+| macOS 12+，Apple Silicon / Intel | `.dmg` |
+| Windows 10 / 11，x64 / ARM64 | `-setup.exe` 或便携 `.zip`，使用 Direct3D 11，无需 WebView2 |
+| Linux，x64 / ARM64 | `.tar.gz`，需要 GTK 3，托盘另需 `libayatana-appindicator3`，无需 WebKitGTK |
 
-然后右键点应用 → 打开。
-
-## 自动更新
-
-正式发布的桌面端会检查更新，并支持在应用内下载安装。可在 **设置 → 关于** 手动检查，或开启自动检查。
-
-官网与文档地址是 [https://xiaobaiswitch.com](https://xiaobaiswitch.com)。
+macOS / Windows 的 `.tar.gz`、`.app.tar.gz` 与更新 JSON 是更新协议资产，不是此处的安装器，Linux 发行版兼容性以及 Windows / Linux 的签名和安装仍待发布实机验证。

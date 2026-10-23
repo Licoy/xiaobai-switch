@@ -1,34 +1,25 @@
 ---
-title: Install
-description: Download macOS and Windows installers from GitHub Releases, including the macOS “damaged” fix.
+title: Install and migrate
+description: Native packages, runtime requirements and the 0.0.12 bridge
 order: 2
 ---
 
-**macOS** (Apple Silicon / Intel) and **Windows** (x64 / ARM64) are supported. Get the matching installer from [Releases](https://github.com/Licoy/xiaobai-switch/releases), or use the site [download page](/en/download/).
+## Native 1.x and migration
 
-## Package types
+XiaoBaiSwitch 1.x uses mygo 0.6.2 and a native Go UI. React / Tauri sources remain for the 0.0.12 bridge only. The native window uses a shared 224px sidebar, #0C76F8, Remix line UI icons and Lobe provider icons.
 
-| Platform | Package |
-|----------|---------|
-| macOS Apple Silicon | `.dmg` (aarch64) |
-| macOS Intel | `.dmg` (x86_64) |
-| Windows x64 | `.msi` / NSIS `.exe`, plus a portable zip |
-| Windows ARM64 | NSIS `.exe` only, plus a portable zip |
+Upgrade 0.0.11 to [the 0.0.12 bridge](https://github.com/Licoy/xiaobai-switch/releases/tag/v0.0.12) before native 1.x. macOS 11 should stay on the bridge; native builds require macOS 12 or later.
 
-## macOS says the app is “damaged”
+Data stays in `~/.xiaobai-switch/`, including the database and `master.key`. App ZIP backups restore these files without automatically changing Claude Code, Codex, Pi or Prime CLI configurations. Confirm and apply again in Apply Center when you want to synchronize them.
 
-The macOS build is **ad-hoc signed** (no Apple Developer ID, not notarized). After a browser download, macOS may say the app is damaged — that is the quarantine flag, not a broken file. **Privacy & Security will not show “Open Anyway”.**
+## Download and install
 
-Drag the app to Applications, then run:
+Choose an available platform and architecture from [Downloads](https://xiaobaiswitch.com/en/download/) or [Releases](https://github.com/Licoy/xiaobai-switch/releases).
 
-```bash
-xattr -cr /Applications/XiaoBaiSwitch.app
-```
+| Platform | Native package and runtime |
+|---|---|
+| macOS 12+, Apple Silicon / Intel | `.dmg` |
+| Windows 10 / 11, x64 / ARM64 | `-setup.exe` or portable `.zip`, Direct3D 11, no WebView2 |
+| Linux, x64 / ARM64 | `.tar.gz`, GTK 3; tray support also needs `libayatana-appindicator3`, no WebKitGTK |
 
-Then right-click the app → Open.
-
-## Automatic updates
-
-Official desktop builds can check for updates and install them in-app. Check manually in **Settings → About**, or turn on automatic checks.
-
-The official site is [https://xiaobaiswitch.com](https://xiaobaiswitch.com).
+macOS / Windows `.tar.gz`, `.app.tar.gz` and update JSON files belong to update protocols rather than the installers above. Linux distribution compatibility and Windows / Linux signing and installation await release testing on devices.

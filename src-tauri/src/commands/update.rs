@@ -1,3 +1,6 @@
+#[path = "native_transition.rs"]
+mod native_transition;
+
 use crate::error::{AppError, AppResult};
 use crate::http_client::{resolve_proxy, ResolvedProxy};
 use crate::repo;
@@ -43,8 +46,8 @@ pub async fn check_app_update(
     let settings = state.db.with_conn(repo::settings::get_settings)?;
     let resolved = resolve_proxy(&settings)?;
     match &resolved {
-        ResolvedProxy::Url(proxy) => {
-            tracing::info!(mode = %settings.proxy_mode, proxy = %proxy, "checking updates");
+        ResolvedProxy::Url(_) => {
+            tracing::info!(mode = %settings.proxy_mode, "checking updates with configured proxy");
         }
         ResolvedProxy::Disabled => {
             tracing::info!(mode = %settings.proxy_mode, "checking updates without proxy");
@@ -54,7 +57,15 @@ pub async fn check_app_update(
         }
     }
 
-    let builder = apply_updater_proxy(app.updater_builder().timeout(CHECK_TIMEOUT), &resolved)?;
+    let mut builder = apply_updater_proxy(app.updater_builder().timeout(CHECK_TIMEOUT), &resolved)?;
+    let major = native_transition::os_major().map_err(|e| AppError::new("updater", e))?;
+    if native_transition::eligible(env!("CARGO_PKG_VERSION"), std::env::consts::OS, major) {
+        let endpoint = url::Url::parse(native_transition::ENDPOINT)
+            .map_err(|e| AppError::new("updater", e.to_string()))?;
+        builder = builder
+            .endpoints(vec![endpoint])
+            .map_err(|e| AppError::new("updater", e.to_string()))?;
+    }
     let updater = builder
         .build()
         .map_err(|e| AppError::new("updater", e.to_string()))?;

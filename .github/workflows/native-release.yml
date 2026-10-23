@@ -1,0 +1,283 @@
+name: Native Release
+on:
+  push:
+    tags: ['v[1-9]*.*.*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Native 1.x version without v
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: native-release-${{ inputs.version && format('v{0}', inputs.version) || github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      commit: ${{ steps.version.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/v{0}', inputs.version) || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          RELEASE_VERSION="${INPUT_VERSION:-${GITHUB_REF_NAME#v}}"
+          export RELEASE_VERSION
+          node --input-type=module -e 'import {version} from "./scripts/native-release-lib.mjs";version(process.env.RELEASE_VERSION)'
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse "refs/tags/v$RELEASE_VERSION^{commit}")" ]; then
+            echo "Release tag must name the checked-out commit" >&2
+            exit 1
+          fi
+          echo "version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Require immutable bridge and select release commit range
+        id: notes-range
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p .build/bridge
+          gh release download v0.0.12 --pattern latest.json --dir .build/bridge --repo "$GITHUB_REPOSITORY"
+          node --input-type=module -e 'import fs from "node:fs";import {immutableBridgeManifest} from "./scripts/native-release-lib.mjs";immutableBridgeManifest(JSON.parse(fs.readFileSync(".build/bridge/latest.json","utf8")))'
+          echo "range=$(node scripts/native-release-notes-range.mjs)" >> "$GITHUB_OUTPUT"
+      - name: Generate release notes from commits
+        uses: orhun/git-cliff-action@v4
+        with:
+          version: v2.14.2
+          config: cliff.toml
+          args: --strip header --offline --tag v${{ steps.version.outputs.version }} --output release-notes.md ${{ steps.notes-range.outputs.range }}
+      - name: Prepare shared native release notes
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs'
+          import {releaseNotes} from './scripts/native-release-metadata.mjs'
+          import {updaterNotesFromReleaseBody} from './scripts/generate-updater-manifest.mjs'
+          const notes=releaseNotes(updaterNotesFromReleaseBody(fs.readFileSync('release-notes.md','utf8')))
+          fs.writeFileSync('release-notes.md',`${notes}\n\nBuilt with Go 1.27.1 and [mygo v0.6.2](https://github.com/egoist/mygo/releases/tag/v0.6.2)\n\nmacOS and Windows builds use self-signed certificates, without Apple notarization or Windows SmartScreen reputation; first launch may require system approval\n`)
+          JS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-release-notes
+          path: release-notes.md
+          if-no-files-found: error
+      - name: Require real signing credentials before building
+        env:
+          MYGO_UPDATER_PUBLIC_KEY: ${{ vars.MYGO_UPDATER_PUBLIC_KEY }}
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
+        run: |
+          node --input-type=module <<'JS'
+          import {signingKeys} from './scripts/native-release-lib.mjs'
+          import {validateUpdaterSigningSecrets} from './scripts/validate-updater-signing-secret.mjs'
+          for(const name of ['APPLE_CERTIFICATE_BASE64','APPLE_CERTIFICATE_PASSWORD','APPLE_SIGNING_IDENTITY','WINDOWS_CERTIFICATE_BASE64','WINDOWS_SIGN_CERT_PASSWORD'])if(!process.env[name])throw new Error(`Missing ${name}`)
+          signingKeys(process.env.MYGO_UPDATER_PUBLIC_KEY,process.env.MYGO_UPDATER_PRIVATE_KEY)
+          validateUpdaterSigningSecrets({privateKey:process.env.TAURI_SIGNING_PRIVATE_KEY,password:process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD})
+          JS
+  build:
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: macos-latest, target: darwin-amd64}
+          - {os: macos-latest, target: darwin-arm64}
+          - {os: windows-latest, target: windows-amd64}
+          - {os: windows-latest, target: windows-arm64}
+          - {os: ubuntu-latest, target: linux-amd64}
+          - {os: ubuntu-24.04-arm, target: linux-arm64}
+    runs-on: ${{ matrix.os }}
+    env:
+      RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+      MYGO_UPDATER_PUBLIC_KEY: ${{ vars.MYGO_UPDATER_PUBLIC_KEY }}
+      MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+      WINDOWS_SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.commit }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.27.1
+          cache: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install pinned MyGo CLI
+        shell: bash
+        run: |
+          mkdir -p .build/tools
+          go build -o .build/tools/mygo${{ runner.os == 'Windows' && '.exe' || '' }} github.com/egoist/mygo/cmd/mygo
+          echo "NATIVE_REAL_GO=$(go env GOROOT)/bin/go${{ runner.os == 'Windows' && '.exe' || '' }}" >> "$GITHUB_ENV"
+      - name: Configure self-signed Apple identity
+        if: runner.os == 'macOS'
+        env:
+          CERT: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/native-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
+          printf '%s' "$CERT" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN"
+          security find-certificate -c "$APPLE_SIGNING_IDENTITY" -p "$KEYCHAIN" > "$RUNNER_TEMP/native-signing.pem"
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k "$KEYCHAIN" "$RUNNER_TEMP/native-signing.pem"
+          FINGERPRINT="$(openssl x509 -in "$RUNNER_TEMP/native-signing.pem" -noout -fingerprint -sha1 | cut -d= -f2 | tr -d ':')"
+          [[ "$FINGERPRINT" =~ ^[A-Fa-f0-9]{40}$ ]]
+          echo "APPLE_SIGNING_CERT_SHA1=$FINGERPRINT" >> "$GITHUB_ENV"
+          cp /usr/bin/true "$RUNNER_TEMP/native-sign-probe"
+          codesign --force --sign "$APPLE_SIGNING_IDENTITY" --keychain "$KEYCHAIN" "$RUNNER_TEMP/native-sign-probe"
+          codesign --verify --strict -R "=certificate leaf = H\"$FINGERPRINT\"" "$RUNNER_TEMP/native-sign-probe"
+          rm "$RUNNER_TEMP/native-sign-probe"
+          rm "$RUNNER_TEMP/cert.p12"
+      - name: Configure Windows signing and NSIS
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CERT: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          choco install nsis --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS installation failed' }
+          $certificate = Join-Path $env:RUNNER_TEMP 'native-signing.pfx'
+          [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:CERT))
+          $password = ConvertTo-SecureString $env:WINDOWS_SIGN_CERT_PASSWORD -AsPlainText -Force
+          $pfx = Get-PfxData -FilePath $certificate -Password $password
+          $signers = @($pfx.EndEntityCertificates)
+          if ($signers.Count -ne 1) { throw 'Exactly one Windows signing identity required' }
+          $public = Join-Path $env:RUNNER_TEMP 'native-signing.cer'
+          Export-Certificate -Cert $signers[0] -FilePath $public | Out-Null
+          "WINDOWS_SIGN_CERT_SHA1=$($signers[0].Thumbprint)" >> $env:GITHUB_ENV
+          foreach ($store in @('Root', 'TrustedPublisher')) {
+            Import-Certificate -FilePath $public -CertStoreLocation "Cert:\CurrentUser\$store" | Out-Null
+          }
+          "WINDOWS_SIGN_CERT_FILE=$certificate" >> $env:GITHUB_ENV
+          "MAKENSIS=C:\Program Files (x86)\NSIS\makensis.exe" >> $env:GITHUB_ENV
+          $tool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' | Sort-Object FullName -Descending | Select-Object -First 1
+          if (!$tool) { throw 'signtool is required' }
+          "SIGNTOOL=$($tool.FullName)" >> $env:GITHUB_ENV
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-release-notes
+          path: .build/native-release
+      - name: Test and build signed native payload
+        shell: bash
+        run: |
+          export RELEASE_NOTES="$(cat .build/native-release/release-notes.md)"
+          node scripts/native-release-log.mjs '.build/native-release/logs/${{ matrix.target }}.log' go test ./internal/...
+          node scripts/native-release-log.mjs '.build/native-release/logs/${{ matrix.target }}.log' go vet ./internal/...
+          node scripts/native-release-log.mjs '.build/native-release/logs/${{ matrix.target }}.log' node --test scripts/native-release-lib.test.mjs scripts/native-release-metadata.test.mjs scripts/native-release-sign.test.mjs scripts/native-transition.test.mjs
+          node scripts/native-release-log.mjs '.build/native-release/logs/${{ matrix.target }}.log' node scripts/native-release.mjs '${{ matrix.target }}'
+      - name: Install and smoke host package
+        shell: bash
+        run: node scripts/native-release-log.mjs '.build/native-release/logs/${{ matrix.target }}.log' node scripts/native-check-install.mjs '${{ matrix.target }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-release-${{ matrix.target }}
+          path: .build/native-release/assets/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-diagnostics-${{ matrix.target }}
+          path: .build/native-release/logs/*.log
+          if-no-files-found: warn
+      - name: Remove signing material
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/native-signing.pfx" "$RUNNER_TEMP/cert.p12"
+          if [ "$RUNNER_OS" = macOS ]; then
+            if [ -f "$RUNNER_TEMP/native-signing.pem" ]; then
+              sudo security remove-trusted-cert -d "$RUNNER_TEMP/native-signing.pem"
+              rm "$RUNNER_TEMP/native-signing.pem"
+            fi
+          fi
+      - name: Remove Apple temporary keychain
+        if: always() && runner.os == 'macOS'
+        run: |
+          if [ -f "$RUNNER_TEMP/native-signing.keychain-db" ]; then security delete-keychain "$RUNNER_TEMP/native-signing.keychain-db"; fi
+      - name: Remove Windows temporary certificate trust
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:WINDOWS_SIGN_CERT_SHA1) {
+            foreach ($store in @('Root', 'TrustedPublisher')) {
+              $cert = "Cert:\CurrentUser\$store\$env:WINDOWS_SIGN_CERT_SHA1"
+              if (Test-Path $cert) { Remove-Item $cert }
+            }
+          }
+          $public = Join-Path $env:RUNNER_TEMP 'native-signing.cer'
+          if (Test-Path $public) { Remove-Item $public }
+  publish:
+    permissions:
+      contents: write
+    needs: [preflight, build]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+      MYGO_UPDATER_PUBLIC_KEY: ${{ vars.MYGO_UPDATER_PUBLIC_KEY }}
+      NATIVE_BRIDGE_MANIFEST: .build/bridge/latest.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.commit }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-release-*
+          path: .build/native-release/assets
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-diagnostics-*
+          path: .build/native-release/assets
+          merge-multiple: true
+      - name: Fetch immutable bridge and assemble both update protocols
+        run: |
+          mkdir -p .build/bridge
+          gh release download v0.0.12 --pattern latest.json --dir .build/bridge --repo "$GITHUB_REPOSITORY"
+          export RELEASE_NOTES="$(cat .build/native-release/assets/release-notes.md)"
+          node scripts/native-transition.mjs
+          node scripts/native-release-metadata.mjs
+      - name: Publish Release
+        run: |
+          set -euo pipefail
+          flags=(--latest)
+          if [[ "$RELEASE_VERSION" == *-* ]]; then flags=(--prerelease --latest=false); fi
+          gh release create "v$RELEASE_VERSION" .build/native-release/assets/* --draft --verify-tag --title "XiaoBaiSwitch $RELEASE_VERSION" --notes-file .build/native-release/assets/release-notes.md --latest=false --repo "$GITHUB_REPOSITORY"
+          mkdir -p .build/published-assets
+          gh release download "v$RELEASE_VERSION" --dir .build/published-assets --repo "$GITHUB_REPOSITORY"
+          (cd .build/published-assets && sha256sum --check SHA256SUMS)
+          gh release edit "v$RELEASE_VERSION" --draft=false "${flags[@]}" --repo "$GITHUB_REPOSITORY"

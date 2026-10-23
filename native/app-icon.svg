@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="XiaoBaiSwitch">
+  <rect width="1024" height="1024" fill="#FDFCFB"/>
+  <g id="mark">
+    <path fill="#0C76F8" d="M0 1024V373.8C0 324 52 193.3 201 193.3h246C597 193.3 611 287 611 393c0 67 47 97 94 103 63 8 123 16 145 59 18 33 33 70 33 175v178c0 80-61 116-141 116Z"/>
+    <path fill="#FDF4EA" d="M56.3 546C56.3 438 128 396.8 190 396.8h325c73 0 103 41.2 101 121.2-2 57 84 34 146 70 50 32 46 76 4 104-40 26-128 10-556 6-60 0-153.7-34-153.7-152Z"/>
+    <ellipse cx="282.5" cy="557" rx="44.5" ry="55" fill="#0C76F8"/>
+    <ellipse cx="496.5" cy="498" rx="33" ry="39.5" fill="#0C76F8"/>
+    <g transform="rotate(-13.27 418.82 628.06)">
+      <rect x="354.3" y="606.06" width="129" height="44" rx="22" fill="#0C76F8"/>
+    </g>
+  </g>
+</svg>

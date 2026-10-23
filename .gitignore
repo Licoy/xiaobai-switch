@@ -17,3 +17,6 @@ coverage
 .updater-private.key
 .updater-private.key.pub
 .updater-signing.env
+
+# Native build caches, toolchains and isolated development homes
+.build/

@@ -2,289 +2,107 @@
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { t } from "../i18n/ui";
 import { GITHUB_LATEST_RELEASE_URL, type Locale } from "../lib/site";
-import { hrefFor, loadLatestRelease } from "../lib/releases";
+import { loadLatestRelease, type AssetKind } from "../lib/releases";
 import UiIcon from "../components/UiIcon.astro";
 
-interface Props {
-  locale: Locale;
-}
-
+interface Props { locale: Locale }
 const { locale } = Astro.props;
 const seo = t(locale, "seo");
 const download = t(locale, "download");
 const latest = await loadLatestRelease(process.env.GITHUB_TOKEN, process.env.RELEASE_TAG);
 const assets = latest?.assets ?? {};
-const tag = latest?.tag ?? "";
-const fallback = GITHUB_LATEST_RELEASE_URL;
-
-const macCards = [
-  {
-    id: "mac-arm",
-    title: download.macArm,
-    hint: download.macArmHint,
-    icon: "tabler:brand-apple",
-    primaryKind: "mac-arm" as const,
-    primaryLabel: download.ctaDmg,
-    extras: [],
-  },
-  {
-    id: "mac-intel",
-    title: download.macIntel,
-    hint: download.macIntelHint,
-    icon: "tabler:brand-apple",
-    primaryKind: "mac-intel" as const,
-    primaryLabel: download.ctaDmg,
-    extras: [],
-  },
-] as const;
-
-const winCards = [
-  {
-    id: "win-x64",
-    title: download.winX64,
-    hint: download.winX64Hint,
-    icon: "tabler:brand-windows",
-    primaryKind: "win-x64-msi" as const,
-    primaryLabel: download.ctaMsi,
-    extras: [
-      { kind: "win-x64-nsis" as const, label: download.ctaNsis },
-      { kind: "win-x64-zip" as const, label: download.ctaZip },
-    ],
-  },
-  {
-    id: "win-arm",
-    title: download.winArm,
-    hint: download.winArmHint,
-    icon: "tabler:brand-windows",
-    primaryKind: "win-arm-nsis" as const,
-    primaryLabel: download.ctaNsis,
-    extras: [{ kind: "win-arm-zip" as const, label: download.ctaZip }],
-  },
-] as const;
+const releaseUrl = latest?.tag
+  ? `https://github.com/Licoy/xiaobai-switch/releases/tag/${encodeURIComponent(latest.tag)}`
+  : GITHUB_LATEST_RELEASE_URL;
+const labels: Partial<Record<AssetKind, string>> = {
+  "mac-arm": download.ctaDmg, "mac-intel": download.ctaDmg,
+  "win-x64-msi": download.ctaMsi, "win-x64-nsis": download.ctaNsis,
+  "win-arm-nsis": download.ctaNsis, "win-x64-zip": download.ctaZip,
+  "win-arm-zip": download.ctaZip, "linux-x64": download.ctaTar, "linux-arm": download.ctaTar,
+};
+const platforms = [
+  { id: "macos", label: download.tabMacos, icon: "tabler:brand-apple", cards: [
+    { title: download.macArm, hint: download.macArmHint, kinds: ["mac-arm"] },
+    { title: download.macIntel, hint: download.macIntelHint, kinds: ["mac-intel"] },
+  ] },
+  { id: "windows", label: download.tabWindows, icon: "tabler:brand-windows", cards: [
+    { title: download.winX64, hint: download.winX64Hint, kinds: ["win-x64-nsis", "win-x64-msi", "win-x64-zip"] },
+    { title: download.winArm, hint: download.winArmHint, kinds: ["win-arm-nsis", "win-arm-zip"] },
+  ] },
+  { id: "linux", label: download.tabLinux, icon: "remix:terminal-line", cards: [
+    { title: download.linuxX64, hint: download.linuxHint, kinds: ["linux-x64"] },
+    { title: download.linuxArm, hint: download.linuxHint, kinds: ["linux-arm"] },
+  ] },
+];
 ---
-
-<BaseLayout
-  locale={locale}
-  title={seo.downloadTitle}
-  description={seo.downloadDescription}
-  slug="download"
->
-  <div class="page-wrap py-12" data-download-root data-os="macos">
-    <script is:inline>
-      (function () {
-        var root = document.currentScript && document.currentScript.parentElement;
-        if (!root) return;
-        var os = "macos";
-        try {
-          var ua = navigator.userAgent || "";
-          var platform = navigator.platform || "";
-          var uaPlatform =
-            navigator.userAgentData && navigator.userAgentData.platform
-              ? String(navigator.userAgentData.platform)
-              : "";
-          if (/Win/i.test(uaPlatform) || /Win/.test(platform) || /Windows/.test(ua)) {
-            os = "windows";
-          } else if (
-            /macOS|Mac/i.test(uaPlatform) ||
-            /Mac|iPhone|iPad/.test(platform) ||
-            /Mac OS X/.test(ua)
-          ) {
-            os = "macos";
-          }
-        } catch (e) {}
-        root.setAttribute("data-os", os);
-      })();
-    </script>
-
+<BaseLayout locale={locale} title={seo.downloadTitle} description={seo.downloadDescription} slug="download">
+  <div class="page-wrap py-12" data-download-root>
     <h1 class="text-4xl font-bold">{download.title}</h1>
     <p class="mt-3 max-w-3xl text-lg opacity-80">{download.subtitle}</p>
     <p class="mt-2 opacity-70">{download.platforms}</p>
-
     <div class="mt-6 flex flex-wrap items-center gap-3">
-      <a class="btn btn-outline" href={GITHUB_LATEST_RELEASE_URL} target="_blank" rel="noopener noreferrer">
-        <UiIcon name="lucide:github" />
-        {download.latest}
+      <a class="btn btn-outline" href={releaseUrl} target="_blank" rel="noopener noreferrer">
+        <UiIcon name="lucide:github" />{download.latest}
       </a>
-      {
-        tag ? (
-          <p class="text-sm opacity-70">
-            {download.latestVersion}
-            <span class="font-mono">{tag}</span>
-          </p>
-        ) : null
-      }
+      {latest?.tag && <p class="text-sm opacity-70">{download.latestVersion} <span class="font-mono">{latest.tag}</span></p>}
     </div>
     <p class="mt-3 text-sm opacity-60">{download.detectHint}</p>
-
     <div role="tablist" aria-label={download.title} class="tabs tabs-box mt-8 w-fit">
-      <button
-        type="button"
-        role="tab"
-        id="os-tab-macos"
-        class="tab tab-active gap-2"
-        data-os-tab="macos"
-        aria-controls="os-panel-macos"
-        aria-selected="true"
-      >
-        <UiIcon name="tabler:brand-apple" class="size-4" />
-        {download.tabMacos}
-      </button>
-      <button
-        type="button"
-        role="tab"
-        id="os-tab-windows"
-        class="tab gap-2"
-        data-os-tab="windows"
-        aria-controls="os-panel-windows"
-        aria-selected="false"
-      >
-        <UiIcon name="tabler:brand-windows" class="size-4" />
-        {download.tabWindows}
-      </button>
+      {platforms.map((platform, index) => <button type="button" role="tab"
+        id={`os-tab-${platform.id}`} class:list={["tab gap-2", { "tab-active": index === 0 }]}
+        data-os-tab={platform.id} aria-controls={`os-panel-${platform.id}`}
+        aria-selected={index === 0 ? "true" : "false"} tabindex={index === 0 ? 0 : -1}>
+        <UiIcon name={platform.icon} />{platform.label}
+      </button>)}
     </div>
-    <script is:inline>
-      (function () {
-        var root = document.querySelector("[data-download-root]");
-        if (!root) return;
-        var os = root.getAttribute("data-os") === "windows" ? "windows" : "macos";
-        root.querySelectorAll("[data-os-tab]").forEach(function (tab) {
-          var active = tab.getAttribute("data-os-tab") === os;
-          tab.classList.toggle("tab-active", active);
-          tab.setAttribute("aria-selected", active ? "true" : "false");
-        });
-      })();
-    </script>
-
-    <div
-      id="os-panel-macos"
-      role="tabpanel"
-      aria-labelledby="os-tab-macos"
-      class="mt-4 grid gap-4 sm:grid-cols-2"
-      data-os-panel="macos"
-    >
-      {
-        macCards.map((card) => (
-          <article class="card border border-base-300 bg-base-100 shadow-sm">
-            <div class="card-body">
-              <h2 class="card-title">
-                <UiIcon name={card.icon} class="size-6" />
-                {card.title}
-              </h2>
-              <p class="opacity-70">{card.hint}</p>
-              <div class="card-actions mt-2">
-                <a
-                  class="btn btn-primary"
-                  href={hrefFor(assets, card.primaryKind, fallback)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <UiIcon name="lucide:download" />
-                  {card.primaryLabel}
-                </a>
-              </div>
+    {platforms.map((platform, index) => <section id={`os-panel-${platform.id}`} role="tabpanel"
+      aria-labelledby={`os-tab-${platform.id}`} data-os-panel={platform.id} hidden={index !== 0} tabindex="0">
+      <div class="mt-4 grid gap-4 sm:grid-cols-2">
+        {platform.cards.map((card) => {
+          const available = (card.kinds as AssetKind[]).filter((kind) => assets[kind]);
+          return <article class="card border border-base-300 bg-base-100 shadow-sm"><div class="card-body">
+            <h2 class="card-title"><UiIcon name={platform.icon} class="size-6" />{card.title}</h2>
+            <p class="opacity-70">{card.hint}</p>
+            <div class="card-actions mt-2 flex-wrap items-center gap-2">
+              {available.map((kind, assetIndex) => <a class:list={["btn", assetIndex === 0 ? "btn-primary" : "btn-outline"]}
+                href={assets[kind]!.url} title={assets[kind]!.name} target="_blank" rel="noopener noreferrer">
+                <UiIcon name="lucide:download" />{labels[kind]}
+              </a>)}
+              {available.length === 0 && <p role="status">{download.unavailable}</p>}
             </div>
-          </article>
-        ))
-      }
-    </div>
-
-    <div
-      id="os-panel-windows"
-      role="tabpanel"
-      aria-labelledby="os-tab-windows"
-      class="mt-4 grid gap-4 sm:grid-cols-2"
-      data-os-panel="windows"
-    >
-      {
-        winCards.map((card) => (
-          <article class="card border border-base-300 bg-base-100 shadow-sm">
-            <div class="card-body">
-              <h2 class="card-title">
-                <UiIcon name={card.icon} class="size-6" />
-                {card.title}
-              </h2>
-              <p class="opacity-70">{card.hint}</p>
-              <div class="card-actions mt-2 flex-wrap items-center gap-2">
-                <a
-                  class="btn btn-primary"
-                  href={hrefFor(assets, card.primaryKind, fallback)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <UiIcon name="lucide:download" />
-                  {card.primaryLabel}
-                </a>
-                {card.extras.map((extra) => (
-                  <a
-                    class="btn btn-ghost btn-sm"
-                    href={hrefFor(assets, extra.kind, fallback)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {extra.label}
-                  </a>
-                ))}
-              </div>
-            </div>
-          </article>
-        ))
-      }
-    </div>
-
-    <div role="alert" class="alert mt-10" data-macos-note>
-      <div>
-        <h2 class="font-bold">{download.macGate}</h2>
-        <p class="mt-2">{download.macGateBody}</p>
-        <pre class="mt-3 overflow-x-auto rounded-box bg-base-200 p-4 text-sm"><code>xattr -cr /Applications/XiaoBaiSwitch.app</code></pre>
-        <p class="mt-2">{download.macGateThen}</p>
+          </div></article>;
+        })}
       </div>
-    </div>
+      {platform.id === "macos" && <p class="mt-6">{download.macRequirement} <a class="link" href="https://github.com/Licoy/xiaobai-switch/releases/tag/v0.0.12">{download.macLegacy}</a></p>}
+      {platform.id === "linux" && <p class="mt-6">{download.linuxRequirements}</p>}
+      {platform.id === "windows" && <p class="mt-6">{download.windowsRequirements}</p>}
+    </section>)}
+    <p class="mt-8 text-sm opacity-70">{download.migration}</p>
   </div>
 </BaseLayout>
-
-<style>
-  [data-download-root] [data-os-panel] {
-    display: none;
-  }
-  [data-download-root][data-os="macos"] [data-os-panel="macos"],
-  [data-download-root][data-os="windows"] [data-os-panel="windows"] {
-    display: grid;
-  }
-  [data-download-root][data-os="windows"] [data-macos-note] {
-    display: none;
-  }
-  [data-download-root][data-os="macos"] [data-os-tab="macos"],
-  [data-download-root][data-os="windows"] [data-os-tab="windows"] {
-    --tab-bg: var(--color-base-100);
-    --tab-border-color: var(--color-base-200);
-    z-index: 1;
-    border-color: var(--tab-border-color);
-    background-color: var(--tab-bg);
-    color: var(--tab-color, currentColor);
-  }
-</style>
-
 <script>
-  function syncTabs(root: HTMLElement) {
-    const os = root.getAttribute("data-os") === "windows" ? "windows" : "macos";
-    root.querySelectorAll<HTMLElement>("[data-os-tab]").forEach((tab) => {
-      const active = tab.getAttribute("data-os-tab") === os;
-      tab.classList.toggle("tab-active", active);
-      tab.setAttribute("aria-selected", active ? "true" : "false");
-      tab.tabIndex = active ? 0 : -1;
-    });
-  }
-
   const root = document.querySelector<HTMLElement>("[data-download-root]");
   if (root) {
-    syncTabs(root);
-    root.querySelectorAll<HTMLElement>("[data-os-tab]").forEach((tab) => {
-      tab.addEventListener("click", () => {
-        const os = tab.getAttribute("data-os-tab");
-        if (os === "macos" || os === "windows") {
-          root.setAttribute("data-os", os);
-          syncTabs(root);
-        }
+    const tabs = [...root.querySelectorAll<HTMLButtonElement>("[data-os-tab]")];
+    const panels = [...root.querySelectorAll<HTMLElement>("[data-os-panel]")];
+    function select(index: number, focus = false) {
+      tabs.forEach((tab, i) => {
+        tab.setAttribute("aria-selected", String(i === index));
+        tab.classList.toggle("tab-active", i === index);
+        tab.tabIndex = i === index ? 0 : -1;
+      });
+      panels.forEach((panel, i) => { panel.hidden = i !== index; });
+      if (focus) tabs[index]?.focus();
+    }
+    const device = `${navigator.platform} ${navigator.userAgent}`;
+    select(/Windows|Win32|Win64/i.test(device) ? 1 : /Linux/i.test(device) && !/Android/i.test(device) ? 2 : 0);
+    tabs.forEach((tab, index) => {
+      tab.addEventListener("click", () => select(index));
+      tab.addEventListener("keydown", (event) => {
+        const next = event.key === "ArrowRight" ? (index + 1) % tabs.length
+          : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length
+          : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : -1;
+        if (next >= 0) { event.preventDefault(); select(next, true); }
       });
     });
   }

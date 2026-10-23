@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "XiaoBaiSwitch",
   "mainBinaryName": "XiaoBaiSwitch",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "identifier": "com.github.licoy.xiaobai-switch.app",
   "build": {
     "beforeDevCommand": "pnpm dev",

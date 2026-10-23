@@ -10,21 +10,23 @@
 
 官网：[https://xiaobaiswitch.com](https://xiaobaiswitch.com)
 
-小白也能上手的，以站点驱动的 Claude Code / Codex / Pi 上游配置桌面应用。
+小白也能上手的，以站点驱动的 Claude Code / Codex / Pi / Prime 上游配置桌面应用。
 
-以「上游站点」为中心：填好 Base URL 与 API Key，拉取或手输模型，再一键应用到 Claude Code、Codex 或 Pi。
+以「上游站点」为中心：填好 Base URL 与 API Key，拉取或手输模型，再一键应用到 Claude Code、Codex、Pi 或 Prime。
 
 ## 功能
 
 - **站点中心**：管理多个上游中转，支持多条线路、测速与一键切换
 - **模型管理**：从站点拉取模型，也可手输、测试可用性
-- **应用中心**：分别为 Claude Code、Codex、Pi 选择站点、模型与目标选项后写入
+- **应用中心**：分别为 Claude Code、Codex、Pi、Prime 选择站点、模型与目标选项后写入
 - **线路切换**：切换后可同步已应用到工具里的地址
 - **配置备份**：应用前自动备份，可在应用中心还原
 - **链接导入**：通过 `xiaobaiswitch://` 链接一键导入站点，不会自动应用到工具
 - **桌面体验**：托盘常驻、开机启动、浅色 / 深色主题、简体中文与 English
 
 ## 软件截图
+
+以下截图来自 0.x 过渡版，原生 1.x 使用统一侧栏界面
 
 | 欢迎页 | 测试模型 |
 |:---:|:---:|
@@ -36,14 +38,14 @@
 
 1. 添加一个上游站点，填写名称、Base URL 和 API Key
 2. 拉取模型，或手动添加要用的模型 id
-3. 打开应用中心，选择 Claude Code、Codex 或 Pi，确认模型与选项后点击应用
+3. 打开应用中心，选择 Claude Code、Codex、Pi 或 Prime，确认模型与选项后点击应用
 4. 重启终端或重新打开对应 CLI，使配置生效
 
 同一站点可配置多条线路，第一项为当前默认线路，可随时测速并切换。
 
 ## 从链接导入站点
 
-安装桌面端后，浏览器或其它应用可以打开 `xiaobaiswitch://` 链接，拉起 XiaoBaiSwitch 并导入上游站点；导入不会自动应用到 Claude Code / Codex / Pi，需在应用中心手动确认。
+安装桌面端后，浏览器或其它应用可以打开 `xiaobaiswitch://` 链接，拉起 XiaoBaiSwitch 并导入上游站点；导入不会自动应用到 Claude Code / Codex / Pi / Prime，需在应用中心手动确认。
 
 1. 安装并打开桌面端
 2. 点击导入链接，应用会切到站点页并弹出确认框
@@ -95,17 +97,38 @@ xiaobaiswitch://sites?name=Mix&baseurl=https://first.example.com/v1&baseurls=htt
 
 URL 中携带 API Key 可能被浏览器历史、扩展或系统日志记录，不要把真实密钥写在公开页面；推荐登录后的私有后台按需生成，或省略 `apikey` 让用户在应用内补全。
 
+## 原生 1.x 与迁移
+
+XiaoBaiSwitch 1.x 使用 mygo 0.6.2 与纯 Go 原生 UI，旧 React / Tauri 源仅用于 0.0.12 过渡版；主窗采用统一 224px 侧栏，品牌色 #0C76F8，通用图标使用 Remix line，目标品牌使用 Lobe 图标。
+
+从 0.0.11 升级时，先安装 [0.0.12 过渡版](https://github.com/Licoy/xiaobai-switch/releases/tag/v0.0.12)，再升级至原生 1.x，macOS 11 请停留在过渡版，原生版需要 macOS 12 或更高版本。
+
+应用数据继续使用 `~/.xiaobai-switch/`，包含数据库与 `master.key`，应用 ZIP 备份恢复这两者，不会自动修改 Claude Code、Codex、Pi、Prime 的 CLI 配置；恢复应用数据后如需同步，请在应用中心确认后重新应用。
+
 ## 下载与安装
 
-支持 macOS（Apple Silicon / Intel）与 Windows（x64 / ARM64），请到 [Releases](https://github.com/Licoy/xiaobai-switch/releases) 下载对应安装包。
+从 [下载页](https://xiaobaiswitch.com/download/) 或 [Releases](https://github.com/Licoy/xiaobai-switch/releases) 选择当前版本实际提供的平台与架构文件。
 
-macOS 安装包是 ad-hoc 签名（未使用 Apple Developer ID，也未公证）；浏览器下载后，系统可能提示「已损坏」——这是隔离属性，不是文件坏了，**「隐私与安全性」不会出现「仍要打开」**；把应用拖到「应用程序」后执行：
+| 平台 | 原生安装包与运行要求 |
+|---|---|
+| macOS 12+，Apple Silicon / Intel | `.dmg` |
+| Windows 10 / 11，x64 / ARM64 | `-setup.exe` 或便携 `.zip`，使用 Direct3D 11，无需 WebView2 |
+| Linux，x64 / ARM64 | `.tar.gz`，需要 GTK 3，托盘另需 `libayatana-appindicator3`，无需 WebKitGTK |
 
-```bash
-xattr -cr /Applications/XiaoBaiSwitch.app
+macOS / Windows 的 `.tar.gz`、`.app.tar.gz` 与更新 JSON 是更新协议资产，不是此处的安装器，Linux 发行版兼容性以及 Windows / Linux 的签名和安装仍待发布实机验证。
+
+## 原生开发
+
+运行 `./scripts/native-dev.sh` 启动开发实例，日常启动、调试与手动验收默认使用真实 HOME 下的 `~/.xiaobai-switch` 和四目标 CLI 配置目录，沿用已有设置及目标环境变量覆盖；开发二进制与开发 `.app` 使用相同默认规则，仅明确需要隔离时指定 `--dev-home` 或 `XIAOBAI_DEV_HOME`
+
+```sh
+./scripts/native-go.sh test ./internal/...
+./scripts/native-go.sh vet ./internal/...
+./scripts/native-go.sh build -o .build/XiaoBaiSwitch .
 ```
 
-然后右键点应用 → 打开。
+工具链准备、平台构建、默认目录与可选隔离规则见 [原生开发说明](docs/v1-development.md)，旧 `pnpm dev` / Tauri 命令仅供过渡版开发
+
 
 ## 自动更新
 

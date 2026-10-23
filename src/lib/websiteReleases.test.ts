@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   GITHUB_API_LATEST,
+  classifyAsset,
+  assetsFromRelease,
   githubReleaseApiUrl,
   loadLatestRelease,
 } from "./githubRelease";
@@ -87,5 +89,70 @@ describe("loadLatestRelease", () => {
     );
 
     await expect(loadLatestRelease("token")).rejects.toThrow(/asset/i);
+  });
+});
+
+describe("release download assets", () => {
+  it.each([
+    ["XiaoBaiSwitch_1.0.0_darwin-amd64.dmg", "mac-intel"],
+    ["XiaoBaiSwitch_1.0.0_darwin-arm64.dmg", "mac-arm"],
+    ["XiaoBaiSwitch_1.0.0_windows-amd64-setup.exe", "win-x64-nsis"],
+    ["XiaoBaiSwitch_1.0.0_windows-arm64-setup.exe", "win-arm-nsis"],
+    ["XiaoBaiSwitch_1.0.0_windows-amd64.zip", "win-x64-zip"],
+    ["XiaoBaiSwitch_1.0.0_windows-arm64.zip", "win-arm-zip"],
+    ["XiaoBaiSwitch_1.0.0_linux-amd64.tar.gz", "linux-x64"],
+    ["XiaoBaiSwitch_1.0.0_linux-arm64.tar.gz", "linux-arm"],
+    ["XiaoBaiSwitch_0.0.12_aarch64.dmg", "mac-arm"],
+    ["XiaoBaiSwitch_0.0.12_x64.dmg", "mac-intel"],
+    ["XiaoBaiSwitch_0.0.12_x86_64.dmg", "mac-intel"],
+    ["XiaoBaiSwitch_0.0.12_x64_en-US.msi", "win-x64-msi"],
+    ["XiaoBaiSwitch_0.0.12_x64-setup.exe", "win-x64-nsis"],
+    ["XiaoBaiSwitch_0.0.12_arm64-setup.exe", "win-arm-nsis"],
+    ["XiaoBaiSwitch_0.0.12_windows-x64-portable.zip", "win-x64-zip"],
+    ["XiaoBaiSwitch_0.0.12_windows-arm64-portable.zip", "win-arm-zip"],
+  ])("classifies %s as %s", (name, kind) => {
+    expect(classifyAsset(name)).toBe(kind);
+  });
+
+  it.each([
+    "XiaoBaiSwitch_1.0.0_darwin-amd64.tar.gz",
+    "XiaoBaiSwitch_1.0.0_windows-amd64.tar.gz",
+    "XiaoBaiSwitch_1.0.0_darwin-arm64.app.tar.gz",
+    "XiaoBaiSwitch_1.0.0_linux-amd64.tar.gz.sig",
+    "update-linux-amd64.json", "latest.json", "delta.tar.gz", "source.zip",
+    "XiaoBaiSwitch_1.0.0_linux-arm64.tar.gz.delta",
+    "XiaoBaiSwitch_1.0.0_windows-arm64-setup.exe.sha256",
+  ])("excludes updater or unrelated asset %s", (name) => {
+    expect(classifyAsset(name)).toBeNull();
+  });
+
+  it("preserves an absent architecture instead of inventing a link", () => {
+    const result = assetsFromRelease({ tag_name: "v1.0.0", assets: [{
+      name: "XiaoBaiSwitch_1.0.0_linux-arm64.tar.gz", browser_download_url: "https://example.test/linux-arm64.tar.gz",
+    }] });
+    expect(result.tag).toBe("v1.0.0");
+    expect(result.assets["linux-x64"]).toBeUndefined();
+    expect(result.assets["linux-arm"]?.url).toBe("https://example.test/linux-arm64.tar.gz");
+  });
+});
+
+describe("explicit release failures outside CI", () => {
+  it("rejects HTTP failures instead of rendering an empty download page", async () => {
+    vi.stubEnv("CI", "");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 403 }));
+    await expect(loadLatestRelease()).rejects.toThrow("latest: 403");
+  });
+  it("preserves a network failure", async () => {
+    vi.stubEnv("CI", "");
+    const error = new Error("network unavailable");
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(error));
+    await expect(loadLatestRelease()).rejects.toBe(error);
+  });
+  it("rejects a release containing only updater archives", async () => {
+    vi.stubEnv("CI", "");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      tag_name: "v1.0.0", assets: [{ name: "XiaoBaiSwitch_1.0.0_windows-amd64.tar.gz", browser_download_url: "https://example.test/update.tar.gz" }],
+    }) }));
+    await expect(loadLatestRelease()).rejects.toThrow("no installer assets");
   });
 });

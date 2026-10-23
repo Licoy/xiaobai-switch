@@ -10,7 +10,7 @@ See [Install](../install/). Run `xattr -cr /Applications/XiaoBaiSwitch.app`, the
 
 ## Apply succeeded, but the CLI still uses the old URL
 
-Restart the terminal, or fully quit and reopen Claude Code / Codex / Pi. Apply only writes config files; it does not hot-reload a running process. In Pi, open `/model` to reload the model list.
+Restart the terminal, or fully quit and reopen Claude Code / Codex / Pi / Prime. Apply only writes config files; it does not hot-reload a running process. In Pi, open `/model` to reload the model list.
 
 ## How can I view the full API key?
 
@@ -22,7 +22,7 @@ No. Import only creates or updates a site. You still apply in Apply Center.
 
 ## Is Linux supported?
 
-Current releases are macOS and Windows.
+Native 1.x includes Linux x64 / ARM64 `.tar.gz` packages, requiring GTK 3 and libayatana-appindicator3 for tray support. Check the actual assets on Downloads; distribution compatibility awaits device testing.
 
 ## What is the official site URL?
 

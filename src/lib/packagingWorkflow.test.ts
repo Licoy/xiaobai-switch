@@ -89,7 +89,7 @@ describe("shipped GitHub workflows", () => {
   it("Release matrix covers macOS arm64/intel and Windows x64/arm64", () => {
     const release = readRepoFile(".github/workflows/release.yml");
     expect(release).toMatch(/^name:\s*Release\s*$/m);
-    expect(release).toMatch(/tags:\s*\n\s+-\s+"v\*\.\*\.\*"/);
+    expect(release).toMatch(/tags:\s*\n\s+-\s+"v0\.\*\.\*"/);
 
     const targets = parseReleaseRustTargets(release);
     expect(missingReleaseTargets(targets)).toEqual([]);
@@ -122,6 +122,9 @@ describe("shipped GitHub workflows", () => {
     expect(release).toMatch(/TAURI_SIGNING_PRIVATE_KEY/);
     expect(release).toMatch(/includeUpdaterJson:\s*false/);
     expect(release).toMatch(/scripts\/generate-updater-manifest\.mjs/);
+    expect(release.indexOf("run: node scripts/generate-updater-manifest.mjs")).toBeLessThan(
+      release.indexOf("- name: Publish draft release"),
+    );
     expect(release).toMatch(/scripts\/validate-updater-signing-secret\.mjs/);
     expect(release).toMatch(/codesign --verify --deep --strict/);
   });
@@ -161,6 +164,23 @@ describe("shipped GitHub workflows", () => {
     );
   });
 
+  it("separates legacy bridge tags from all six signed native release targets", () => {
+    const release = readRepoFile(".github/workflows/native-release.yml");
+    const check = readRepoFile(".github/workflows/native-check.yml");
+    expect(release).toMatch(/^name:\s*Native Release\s*$/m);
+    expect(release).toContain("tags: ['v[1-9]*.*.*']");
+    for (const target of ["darwin-amd64", "darwin-arm64", "windows-amd64", "windows-arm64", "linux-amd64", "linux-arm64"]) {
+      expect(release).toContain(`target: ${target}`);
+    }
+    for (const workflow of [release, check]) {
+      expect(workflow).toContain("go-version: 1.27.1");
+    }
+    expect(release).toContain("MYGO_UPDATER_PRIVATE_KEY");
+    expect(release).toContain("gh release download v0.0.12 --pattern latest.json");
+    expect(release).toContain("node scripts/native-transition.mjs");
+    expect(check).toContain("node scripts/native-check-installer.mjs");
+  });
+
   it("rebuilds the website after Release publishes, not on the version tag", () => {
     const website = readRepoFile(".github/workflows/website.yml");
     const release = readRepoFile(".github/workflows/release.yml");
@@ -171,11 +191,14 @@ describe("shipped GitHub workflows", () => {
     expect(website).not.toMatch(/tags:\s*\n\s+-\s+"v\*\.\*\.\*"/);
     expect(website).not.toMatch(/Wait for published GitHub release/);
     expect(website).toMatch(
-      /workflow_run:\s*\n\s+workflows:\s*\n\s+-\s+Release\s*\n\s+types:\s*\n\s+-\s+completed/,
+      /workflow_run:\s*\n\s+workflows:\s*\n\s+-\s+Release\s*\n\s+-\s+Native Release\s*\n\s+types:\s*\n\s+-\s+completed/,
     );
     expect(website).toMatch(/workflow_dispatch:/);
     expect(website).toMatch(/release_tag:/);
     expect(website).toMatch(/RELEASE_TAG:/);
+    expect(website).not.toMatch(/RELEASE_TAG:.*head_branch/);
+    expect(website).not.toMatch(/contains\(github\.event\.workflow_run\.head_branch/);
+    expect(website).toContain("github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || ''");
     expect(website).toMatch(
       /github\.event_name == 'workflow_run' \|\| github\.event_name == 'workflow_dispatch'/,
     );

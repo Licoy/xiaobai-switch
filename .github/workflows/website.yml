@@ -5,16 +5,19 @@ on:
     branches: [main]
     paths:
       - "website/**"
+      - "src/lib/githubRelease.ts"
       - ".github/workflows/website.yml"
   pull_request:
     paths:
       - "website/**"
+      - "src/lib/githubRelease.ts"
       - ".github/workflows/website.yml"
   # GITHUB_TOKEN cannot fire `on: release` for other workflows. Listen to
   # Release completing so the download page rebuilds only after assets exist.
   workflow_run:
     workflows:
       - Release
+      - Native Release
     types:
       - completed
   workflow_dispatch:
@@ -38,11 +41,13 @@ env:
 
 jobs:
   build:
-    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && !contains(github.event.workflow_run.head_branch, '-'))
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.event.inputs.release_tag }}
+      # A manually dispatched release run has a branch here, not its release tag
+      # Rebuild from the published latest stable release after either release workflow
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || '' }}
     defaults:
       run:
         working-directory: website

@@ -4,7 +4,7 @@ description: Language, theme, tray, proxy, paths, backup policy, Codex injection
 order: 12
 ---
 
-Open Settings from the title bar; Esc returns. Most switches save immediately.
+Open Settings from the main sidebar. Most switches save immediately.
 
 ## General
 
@@ -13,7 +13,7 @@ Open Settings from the title bar; Esc returns. Most switches save immediately.
 - **Always on top**
 - **Launch at login**
 - **Close window to tray**
-- **Start hidden in tray** (requires close-to-tray)
+- **Launch behavior**: legacy startInTray maps only to login launch; opening the app directly shows its main window
 
 ## Network
 
@@ -35,4 +35,4 @@ See [Backups](../backups/).
 
 ## About and updates
 
-Shows the version. You can check for updates manually, or enable automatic checks and set the interval. Official builds fetch `latest.json` from GitHub Releases.
+Shows the version. You can check for updates manually, or enable automatic checks and set the interval. Official builds fetch `update-{darwin,windows,linux}-{amd64,arm64}.json` from GitHub Releases.

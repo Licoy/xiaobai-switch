@@ -1,0 +1,9 @@
+{
+  "name": "XiaoBaiSwitch",
+  "identifier": "com.github.licoy.xiaobai-switch.app",
+  "version": "1.0.0",
+  "main": ".",
+  "icon": "native/app-icon.png",
+  "out": ".build/native",
+  "bindings": ".build/native-bindings.ts"
+}

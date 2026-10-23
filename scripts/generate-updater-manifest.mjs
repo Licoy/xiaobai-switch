@@ -175,7 +175,7 @@ async function downloadSignatures(apiUrl, repository, assets, token) {
   return new Map(entries);
 }
 
-async function replaceManifest(release, existingAsset, contents, apiUrl, repository, token) {
+async function replaceManifest({ release, existingAsset, contents, apiUrl, repository, token, name }) {
   if (existingAsset) {
     await githubRequest(
       `${apiUrl}/repos/${repository}/releases/assets/${existingAsset.id}`,
@@ -184,7 +184,7 @@ async function replaceManifest(release, existingAsset, contents, apiUrl, reposit
     );
   }
   const uploadUrl = release.upload_url.replace(/\{\?name,label\}$/, "");
-  await githubRequest(`${uploadUrl}?name=latest.json`, token, {
+  await githubRequest(`${uploadUrl}?name=${name}`, token, {
     method: "POST",
     accept: "application/vnd.github+json",
     headers: {
@@ -195,7 +195,7 @@ async function replaceManifest(release, existingAsset, contents, apiUrl, reposit
   });
 }
 
-async function main() {
+export async function main() {
   const token = process.env.GITHUB_TOKEN;
   const repository = process.env.GITHUB_REPOSITORY;
   const tag = process.env.GITHUB_REF_NAME;
@@ -223,9 +223,15 @@ async function main() {
     signatures,
   });
   const contents = `${JSON.stringify(manifest, null, 2)}\n`;
-  const existingAsset = assets.find(({ name }) => name === "latest.json");
-  await replaceManifest(release, existingAsset, contents, apiUrl, repository, token);
-  console.log(`Uploaded latest.json with ${Object.keys(manifest.platforms).length} platforms.`);
+  // The bridge checks this endpoint even before the first native release exists.
+  const names = tag === "v0.0.12"
+    ? ["latest.json", "native-transition.json"]
+    : ["latest.json"];
+  for (const name of names) {
+    const existingAsset = assets.find((asset) => asset.name === name);
+    await replaceManifest({ release, existingAsset, contents, apiUrl, repository, token, name });
+    console.log(`Uploaded ${name} with ${Object.keys(manifest.platforms).length} platforms.`);
+  }
 }
 
 const entry = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";

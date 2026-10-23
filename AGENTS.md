@@ -2,6 +2,8 @@
 
 本文档约束人类与编码 Agent 如何改动本仓库。
 
+适用范围：产品、领域、安全规则适用于全仓库；下方 Tauri、React、Ant Design、Lucide 与 Rust UI 规则仅适用于 legacy `src/` / `src-tauri/`，原生 1.x 按文末规则执行。
+
 ## 产品规则
 
 - 产品名：**XiaoBaiSwitch**（`com.github.licoy.xiaobai-switch.app`）
@@ -21,7 +23,7 @@
 - **禁止**把用户数据路径写死成 Tauri `app_data_dir`、bundle id 版本字符串，或平台应用支持目录。
 - API key 在数据库中加密存储；**应用（Apply）** 之后，它们可能以明文出现在 `~/.claude` / `~/.codex` / `~/.pi/agent/auth.json` / `~/.prime/agent/auth.json` / `codex.env` / shell rc 中 —— 须在 UI 文案中说明这一点。
 
-## UI Shell
+## Legacy UI Shell（仅 `src/` 与 `src-tauri/` 的 0.0.12 过渡版）
 
 ### 标题栏
 
@@ -170,3 +172,13 @@
 - 前端：`pnpm test:run`、`pnpm typecheck`
 - Rust：在 `src-tauri` 中执行 `cargo test`
 - UI 或适配器改动后，未跑完相关检查，不得声称「已完成」
+
+## 原生 v1 规则
+
+- 主入口与 `internal/` 使用 Go + mygo 原生 UI，`native/` 使用统一 224px 侧栏，通用图标用官方 Remix line，品牌用 Lobe，默认品牌色 `#0C76F8`
+- 修改原生启动、构建、测试或开发隔离时，先读 [原生开发说明](docs/v1-development.md)，使用 `scripts/native-go.sh` / `scripts/native-dev.sh` 的受控工具链
+- 原生可见文案走 `locales/` 的中英文词条，领域、路径、安全与脱敏规则继续适用，公开站点对象仅包含 `keyPrefix`
+- 日常启动、调试与手动验收默认使用真实 HOME 下的正式应用与四目标 CLI 目录，脚本、开发二进制和开发 `.app` 均不自动隔离；仅用户明确要求隔离时使用 `--dev-home` / `XIAOBAI_DEV_HOME`，并验证隔离边界
+- 自动化测试例外，只用临时 HOME / 测试数据目录，不写真实配置；应用备份恢复数据库与主密钥，不自动应用四目标 CLI 配置
+- 0.0.11 经 0.0.12 bridge 再进入原生 1.x，数据根仍为 `~/.xiaobai-switch/`；macOS 11 停留 bridge，原生最低 macOS 12
+- 原生改动完成前运行相关 Go 测试、vet 与受影响平台构建；网站共享下载映射改动运行专用 Vitest、类型检查与网站构建，跨平台实机未验证时明确记录
