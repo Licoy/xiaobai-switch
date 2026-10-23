@@ -59,11 +59,9 @@ func TestLoadMissingAndPermissions(t *testing.T) {
 	if e != nil || len(b) != 32 {
 		t.Fatalf("key size %d %v", len(b), e)
 	}
-	info, e := os.Stat(path)
-	if e != nil {
+	assertPrivateKey(t, path)
+	if _, e = LoadOrCreate(path, true); e != nil {
 		t.Fatal(e)
 	}
-	if info.Mode().Perm() != 0600 {
-		t.Fatalf("permissions %v", info.Mode())
-	}
+	assertPrivateKey(t, path)
 }

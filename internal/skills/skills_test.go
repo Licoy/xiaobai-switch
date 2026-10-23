@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -114,8 +115,18 @@ func TestArchiveSelectionPermissionsAndManagedUpdate(t *testing.T) {
 	}
 	script := filepath.Join(result.Paths[0], "run.sh")
 	info, e := os.Stat(script)
-	if e != nil || info.Mode().Perm()&0100 == 0 {
-		t.Fatal("lost executable bit")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !info.Mode().IsRegular() {
+		t.Fatal("installed script is not a regular file")
+	}
+	content, e := os.ReadFile(script)
+	if e != nil || string(content) != "#!/bin/sh\n" {
+		t.Fatalf("installed script changed: %q %v", content, e)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0711 {
+		t.Fatalf("script permissions: %v, want 0711", info.Mode())
 	}
 	manifest, e := readInstallation(filepath.Join(result.Paths[0], installManifest))
 	if e != nil || manifest.SourceRef != "owner/repo" || manifest.SkillName == nil || *manifest.SkillName != "one" || manifest.InstalledAt == "" {

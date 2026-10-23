@@ -17,6 +17,7 @@ func fixture(t *testing.T) (string, *store.Store, *Manager, domain.SiteDTO) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	root = filepath.Join(root, "backup #100% & 中文")
 	s, e := store.Open(root)
 	if e != nil {
 		t.Fatal(e)

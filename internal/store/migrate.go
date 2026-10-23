@@ -59,7 +59,10 @@ func migrateLegacyTx(tx *sql.Tx) error {
 	if e := ensureColumn(tx, "site_models", "is_manual", "INTEGER NOT NULL DEFAULT 0"); e != nil {
 		return e
 	}
-	keySchema := schema[strings.Index(schema, "CREATE TABLE IF NOT EXISTS site_api_keys"):strings.Index(schema, "CREATE UNIQUE INDEX IF NOT EXISTS idx_site_api_keys_one_active")]
+	keySchema, e := createTableStatement("site_api_keys")
+	if e != nil {
+		return e
+	}
 	if _, e := tx.Exec(keySchema); e != nil {
 		return e
 	}
@@ -101,9 +104,11 @@ func migrateLegacyTx(tx *sql.Tx) error {
 			return e
 		}
 	}
-	start := strings.Index(schema, "CREATE TABLE IF NOT EXISTS sites (")
-	end := strings.Index(schema[start:], ";\n") + start
-	create := strings.Replace(schema[start:end], "IF NOT EXISTS sites", "sites_new", 1)
+	statement, e := createTableStatement("sites")
+	if e != nil {
+		return e
+	}
+	create := strings.Replace(statement, "IF NOT EXISTS sites", "sites_new", 1)
 	if _, e = tx.Exec(create); e != nil {
 		return e
 	}
@@ -149,9 +154,11 @@ func ensureColumn(tx *sql.Tx, table, column, typ string) error {
 }
 func migrateModels(tx *sql.Tx) error {
 	for _, table := range []string{"site_models", "site_model_exclusions"} {
-		start := strings.Index(schema, "CREATE TABLE IF NOT EXISTS "+table+" (")
-		end := strings.Index(schema[start:], ";\n") + start
-		create := strings.Replace(schema[start:end], "IF NOT EXISTS "+table, table+"_new", 1)
+		statement, e := createTableStatement(table)
+		if e != nil {
+			return e
+		}
+		create := strings.Replace(statement, "IF NOT EXISTS "+table, table+"_new", 1)
 		if _, e := tx.Exec(create); e != nil {
 			return e
 		}
@@ -164,4 +171,16 @@ func migrateModels(tx *sql.Tx) error {
 		}
 	}
 	return nil
+}
+
+func createTableStatement(table string) (string, error) {
+	start := strings.Index(schema, "CREATE TABLE IF NOT EXISTS "+table+" (")
+	if start < 0 {
+		return "", fmt.Errorf("migration schema is missing CREATE TABLE for %s", table)
+	}
+	statement, _, found := strings.Cut(schema[start:], ";")
+	if !found {
+		return "", fmt.Errorf("migration schema has unterminated CREATE TABLE for %s", table)
+	}
+	return statement + ";", nil
 }

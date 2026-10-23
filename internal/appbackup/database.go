@@ -6,11 +6,16 @@ import (
 	"github.com/licoy/xiaobai-switch/internal/store"
 	_ "modernc.org/sqlite"
 	"net/url"
+	"path/filepath"
+	"strings"
 )
 
 func validateDatabase(path string, key []byte) error {
-	u := url.URL{Scheme: "file", Path: path}
-	db, e := sql.Open("sqlite", u.String()+"?mode=ro&immutable=1")
+	uri, e := readOnlyDatabaseURI(path)
+	if e != nil {
+		return e
+	}
+	db, e := sql.Open("sqlite", uri)
 	if e != nil {
 		return e
 	}
@@ -102,4 +107,17 @@ func validateDatabase(path string, key []byte) error {
 		return invalid("database foreign keys are invalid")
 	}
 	return rows.Err()
+}
+
+func readOnlyDatabaseURI(path string) (string, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	uriPath := filepath.ToSlash(absolute)
+	if !strings.HasPrefix(uriPath, "/") {
+		uriPath = "/" + uriPath
+	}
+	u := url.URL{Scheme: "file", Path: uriPath, RawQuery: url.Values{"mode": {"ro"}, "immutable": {"1"}}.Encode()}
+	return u.String(), nil
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/licoy/xiaobai-switch/internal/secure"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -131,5 +132,23 @@ func TestLegacyMigrationForeignKeyFailureRollsBack(t *testing.T) {
 	var n int
 	if e = db.QueryRow("SELECT count(*) FROM sqlite_master WHERE name='site_api_keys'").Scan(&n); e != nil || n != 0 {
 		t.Fatalf("partial schema %d %v", n, e)
+	}
+}
+
+func TestLegacyMigrationCRLFSchema(t *testing.T) {
+	original := schema
+	schema = strings.ReplaceAll(strings.ReplaceAll(original, "\r\n", "\n"), "\n", "\r\n")
+	t.Cleanup(func() { schema = original })
+	TestLegacyMigrationAndSnapshot(t)
+}
+
+func TestMigrationRejectsMissingOrUnterminatedSchemaStatement(t *testing.T) {
+	original := schema
+	t.Cleanup(func() { schema = original })
+	for _, input := range []string{"CREATE TABLE IF NOT EXISTS other (id TEXT);", "CREATE TABLE IF NOT EXISTS sites (id TEXT)"} {
+		schema = input
+		if _, err := createTableStatement("sites"); err == nil {
+			t.Fatalf("accepted invalid migration schema %q", input)
+		}
 	}
 }

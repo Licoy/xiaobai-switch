@@ -34,7 +34,11 @@ func TestEnvShellLiteralHasNoExpansion(t *testing.T) {
 	if e = os.WriteFile(path, out, 0600); e != nil {
 		t.Fatal(e)
 	}
-	cmd := exec.Command("/bin/sh", "-c", ". \"$1\"; printf %s \"$XIAOBAI_SITE_A_API_KEY\"", "test", path)
+	shell, e := exec.LookPath("sh")
+	if e != nil {
+		t.Fatal(e)
+	}
+	cmd := exec.Command(shell, "-c", ". \"$1\"; printf %s \"$XIAOBAI_SITE_A_API_KEY\"", "test", filepath.ToSlash(path))
 	got, e := cmd.Output()
 	if e != nil || string(got) != value {
 		t.Fatalf("literal changed or executed: %v", e)
@@ -53,18 +57,19 @@ func TestEnvShellLiteralHasNoExpansion(t *testing.T) {
 }
 func TestSourceBlockLegacyAndEscaping(t *testing.T) {
 	original := []byte("alias ll='ls'\n# >>> Xiaobai Switch >>>\nold\n# <<< Xiaobai Switch <<<\nkeep\n")
-	out, e := SourceBlock(original, "/tmp/my 'env'$file")
+	envPath := filepath.Join(t.TempDir(), "my 'env'$file")
+	out, e := SourceBlock(original, envPath)
 	if e != nil {
 		t.Fatal(e)
 	}
-	again, e := SourceBlock(out, "/tmp/my 'env'$file")
+	again, e := SourceBlock(out, envPath)
 	if e != nil || string(again) != string(out) {
 		t.Fatal("not idempotent")
 	}
 	if !strings.Contains(string(out), "alias ll='ls'") || !strings.Contains(string(out), "keep") {
 		t.Fatal("user content lost")
 	}
-	if _, e = SourceBlock([]byte(begin), "/tmp/env"); e == nil {
+	if _, e = SourceBlock([]byte(begin), envPath); e == nil {
 		t.Fatal("unterminated block accepted")
 	}
 }
