@@ -1,5 +1,6 @@
 // Run only on an ephemeral Windows CI runner, using an isolated registry namespace and temp files.
 import fs from 'node:fs'
+import assert from 'node:assert/strict'
 import os from 'node:os'
 import path from 'node:path'
 import {spawnSync} from 'node:child_process'
@@ -16,16 +17,19 @@ try{
  const exe=path.join(root,'installer.exe'),compiler=process.env.MAKENSIS??'makensis'
  const params=['/DFIXTURE',`/DSHORTCUT=${path.join(root,'shortcut.lnk')}`,`/DVERSION=1.0.0`,`/DFILEVERSION=1.0.0.0`,`/DPAYLOAD=${payload}`,`/DOUTPUT=${exe}`,`/DUNINSTALL=${key}\\Uninstall`,`/DMANU=${key}\\Manufacturer`,`/DPROTOCOL=xiaobai-installer-fixture-${process.pid}`]
  run(compiler,[...params,'scripts/native-transition-installer.nsi'])
+ // Node quotes argv for Windows; literal quote characters would reach the restarted app.
  // Tauri updater supplies /UPDATE /ARGS; /D must be the final NSIS switch.
- run(exe,['/S','/R','/UPDATE','/ARGS','--native-smoke','"argument with spaces"',`/D=${install}`])
+ const expectedArgs=['--native-smoke','argument with spaces']
+ run(exe,['/S','/R','/UPDATE','/ARGS',...expectedArgs,`/D=${install}`])
  const deadline=Date.now()+5000
  let args=[],lastReadError
  while(Date.now()<deadline){
   if(fs.existsSync(marker)){try{args=JSON.parse(fs.readFileSync(marker,'utf8'))}catch(error){lastReadError=error;args=[]}}
-  if(args.includes('--native-smoke')&&args.includes('argument with spaces'))break
+  if(Array.isArray(args)&&args.length===expectedArgs.length&&args.every((arg,index)=>arg===expectedArgs[index]))break
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10)
  }
- if(!args.includes('--native-smoke')||!args.includes('argument with spaces'))throw new Error('updater restart arguments changed', {cause:lastReadError})
+ const shape={count:Array.isArray(args)?args.length:null,nativeSmoke:Array.isArray(args)&&args.includes(expectedArgs[0]),spacedArgument:Array.isArray(args)&&args.includes(expectedArgs[1]),quotedSpacedArgument:Array.isArray(args)&&args.includes('\"argument with spaces\"'),parseFailed:!!lastReadError}
+ assert.deepEqual(Array.isArray(args)?args.map((arg,index)=>arg===expectedArgs[index]):null,expectedArgs.map(()=>true),`updater restart arguments changed: ${JSON.stringify(shape)}`)
  if(fs.existsSync(path.join(install,'old-marker')))throw new Error('upgrade did not replace payload')
  // Copy failure must preserve the previously installed program and report failure.
  fs.writeFileSync(path.join(install,'survives-rollback'),'before')
