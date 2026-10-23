@@ -18,17 +18,19 @@
 
 MyGo CLI 自行传入 `-ldflags`，因此发布使用 `scripts/native-release-go` 保留其全部编译参数并追加 `internal/buildinfo.Version`，以保证原生 JSON、可执行文件和 archive/feed 版本一致；打包始终 `-skip-build-command`，绑定生成不会初始化 Store 或 UI
 
-## 必须人工配置的 CI 参数
+## 已配置的 CI 参数
 
-仓库变量：`MYGO_UPDATER_PUBLIC_KEY`、`APPLE_SIGNING_IDENTITY`
+仓库变量已配置并核实：`MYGO_UPDATER_PUBLIC_KEY`、`APPLE_SIGNING_IDENTITY`
 
-仓库 secrets：`MYGO_UPDATER_PRIVATE_KEY`、现有 `TAURI_SIGNING_PRIVATE_KEY`、`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`、`APPLE_CERTIFICATE_BASE64`、`APPLE_CERTIFICATE_PASSWORD`、`WINDOWS_CERTIFICATE_BASE64`、`WINDOWS_SIGN_CERT_PASSWORD`
+仓库 7 项 secrets 已配置并核实：`MYGO_UPDATER_PRIVATE_KEY`、现有 `TAURI_SIGNING_PRIVATE_KEY`、`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`、`APPLE_CERTIFICATE_BASE64`、`APPLE_CERTIFICATE_PASSWORD`、`WINDOWS_CERTIFICATE_BASE64`、`WINDOWS_SIGN_CERT_PASSWORD`
 
 原生 Ed25519 key 已在本地生成并通过签名、验签和篡改拒绝检查，公钥文件为 `~/.config/xiaobai-switch-signing/mygo-update.pub`，私钥文件为 `~/.config/xiaobai-switch-signing/mygo-update.key`，目录权限 `0700`、私钥 `0600`、公钥 `0644`，私钥是 raw 64 字节的 base64 文本，无独立密码；公钥为 raw 32 字节的 base64 文本，不能放入旧 Tauri minisign 配置
 
-既有 `.updater-private.key` 与 `.updater-signing.env` 已实际签名并匹配 Tauri 内置公钥；没有上传或读取 GitHub secrets 值，CI 仍要求人工配置上述变量与 secrets，缺失、不匹配、缺 NSIS 或签名失败均阻止发布，MyGo 的“跳过安装器”不能算成功
+既有 `.updater-private.key` 与 `.updater-signing.env` 已实际签名并匹配 Tauri 内置公钥；已通过标准输入配置上述变量与 secrets，未读取远端秘密值，缺失、不匹配、缺 NSIS 或签名失败均阻止发布，MyGo 的“跳过安装器”不能算成功
 
-当前发布采用两个平台自签，不需要 `APPLE_ID`、`APPLE_PASSWORD`、`APPLE_TEAM_ID` 或 notary profile；macOS 的 `AQBot Release` 自签证书已定位，subject/issuer 为 `CN=AQBot Release,O=AQBot`，本轮尚未导出或配置 Actions，Windows 证书尚未定位
+当前发布采用两个平台自签，不需要 `APPLE_ID`、`APPLE_PASSWORD`、`APPLE_TEAM_ID` 或 notary profile；macOS 的 `AQBot Release` 自签证书 subject/issuer 为 `CN=AQBot Release,O=AQBot`，本轮仅导出精确 SHA1 `319F9217A02978A18033419A6023046CEB2825CA` 对应的单个身份至 `~/.config/xiaobai-switch-signing/aqbot-release.p12`，权限 `0600`，P12 密码与私钥配对验证通过，两项 Apple secrets 已配置，未改本机信任或 ACL
+
+Windows 专用自签证书保存在同一 `0700` 目录内的 `xiaobai-switch-windows.pfx`、`xiaobai-switch-windows.password` 与 `xiaobai-switch-windows.crt`，三文件均为 `0600`，RSA 3072、Code Signing EKU、Digital Signature 用途及 PFX 密码/公私钥配对验证通过，有效期为 2026-10-23 09:35:47 UTC 至 2031-10-22 09:35:47 UTC，SHA1 为 `02FA395F1760D270B49FF44C1B810E7280E4DFA8`，两项 Windows secrets 已配置，未改本机信任；实际 Authenticode 与完整签名打包仍待 CI
 
 Apple 身份导入 runner 临时 keychain，仅在临时 CI runner 添加此证书的管理员域 codeSign 信任，实际 codesign 验签要求叶证书 SHA1 与导入证书相同；MyGo 生成的自签 DMG 验签后重新编码为 unsigned DMG，校验容器完整性且确认无签名，内部 app 保留原签名，不调用公证或 stapler；处理方式参考 [CPA-Bar 发布工作流](https://github.com/Licoy/CPA-Bar/blob/main/.github/workflows/release.yml)，未复制业务代码
 
@@ -50,19 +52,19 @@ NSIS 使用原 currentUser 路径 `$LOCALAPPDATA\XiaoBaiSwitch`、原产品名 u
 
 `Native Check` 在三种宿主系统执行测试、六目标构建和无状态 smoke，Windows 另执行 NSIS 的 `/UPDATE /ARGS` 与复制失败恢复 fixture；`Native Release` 对宿主架构解包运行 smoke，Linux 在临时 HOME 中运行真实 install.sh 后验证可执行文件，Windows ARM64 当前由 Windows x64 交叉构建，明确报告无法执行 ARM64 runtime smoke
 
-当前本机已验证 macOS ARM64 `--native-smoke` 和六目标交叉编译，Intel smoke 因本机无 Rosetta 返回 bad CPU type，未执行成功，本轮未在 Actions 配置或验证平台自签证书，未实机执行 Windows NSIS/MSI 迁移、Windows ARM64、Linux 桌面与完整 UI 升级；这些必须在具备凭证和对应系统的 CI/人工验收中完成，解包 smoke 仅证明可执行文件及版本，不等于 UI、安装器或实际应用更新验收
+当前本机已验证 macOS ARM64 `--native-smoke` 和六目标交叉编译，Intel smoke 因本机无 Rosetta 返回 bad CPU type，未执行成功，平台自签凭据现已配置，完整 Actions 签名打包仍待验证，未实机执行 Windows NSIS/MSI 迁移、Windows ARM64、Linux 桌面与完整 UI 升级；这些必须在具备凭证和对应系统的 CI/人工验收中完成，解包 smoke 仅证明可执行文件及版本，不等于 UI、安装器或实际应用更新验收
 
 更新服务通过单次安装的稳定 HTTP transport 读取当前代理设置，HTTPS 禁止降级，检查 15 秒、单请求 30 秒，下载可取消，关闭等待在途任务；OnChange 必须快速把状态排到主线程，不能同步调用 Close，队列中的 UI 回调必须检查窗口关闭状态，Close 后不再访问 Store
 
 ## 正式发布顺序与回退
 
-1. 用户配置旧 Tauri minisign 私钥及密码，保留 v0.0.11 内置公钥；新原生 Ed25519 公钥放 `MYGO_UPDATER_PUBLIC_KEY` 仓库 variable，私钥放 `MYGO_UPDATER_PRIVATE_KEY` secret，不能交换两种格式或重新生成旧密钥
-2. 导出并配置现有 macOS 自签证书 P12 和 Windows 自签代码签名证书 PFX，证书与密码只放 Actions secrets，Apple identity 使用前述 variable；新原生 key 已生成，旧 Tauri key 保留，本轮未上传 secrets 或触发发布
+1. 旧 Tauri minisign 私钥及密码已配置，保留 v0.0.11 内置公钥；新原生 Ed25519 公钥放 `MYGO_UPDATER_PUBLIC_KEY` 仓库 variable，私钥放 `MYGO_UPDATER_PRIVATE_KEY` secret，不能交换两种格式或重新生成旧密钥
+2. macOS 自签证书 P12 与 Windows 自签代码签名证书 PFX 已配置至 Actions secrets，Apple identity 使用前述 variable；新原生 key 已生成，旧 Tauri key 保留，本地秘密仅存仓库外私有目录及原忽略文件
 3. 先发布 `v0.0.12` bridge，验证四平台安装器、minisign `.sig`、`latest.json` 与同版本 `native-transition.json` 已公开可下载；在此之前 native release 必须失败，不能跳过 bridge 或上传占位清单
 4. 再发布首个 `v1.0.0`，核对六个原生 feed、四个 signed bridge installer、`native-transition.json` 与复制的 `latest.json`；每次后续 1.x 都必须保留 bridge feed，旧客户端分两次更新
 5. 在 macOS 11/12+ 与 Windows NSIS/MSI 实机验证数据、更新和失败恢复后再标记无缝升级验收通过；macOS 11 始终留在 0.0.12
 
-截至 2026-10-23，远端最新正式版仍为 v0.0.11，v0.0.12 尚未发布；上述发布顺序尚未在真实 release 上执行，当前检查与 fixture 通过不代表真实旧版升级成功
+截至本轮记录，`95c0791`（`release v1.0.0`）已提交并推送至 `v1`，bridge `v0.0.12` CI `39933495275` 正在构建，Native Check `39933477505` 的 macOS 已通过，Windows 路径与 CRLF 等问题正在修复；尚不能声称正式发布或真实旧版无缝升级成功，完整签名打包与安装器实机验收仍待 CI/人工验证
 
 首启保留 `~/.xiaobai-switch/{xiaobai-switch.db,master.key}`，迁移前生成一致性数据库与配套密钥备份，密钥缺失/密文损坏和迁移外键失败显式阻止启动；旧 Rust 与新 Go 同为 AES-256-GCM、12 字节 nonce 前置的 base64 格式，不重新加密或替换原主密钥
 
@@ -95,7 +97,7 @@ Native Release preflight 先按 tag checkout 并输出 commit SHA，提前要求
 
 `SHA256SUMS` 覆盖所有 release 文件但不包含自身；流程先创建 draft 并上传，再完整下载所有 assets 校验 SHA256，全部一致后才公开；prerelease 使用 latest=false，稳定版才设置 latest；preflight/build 为 contents:read，只有 publish 为 contents:write
 
-Windows payload、uninstaller、setup 在 Authenticode 签名后各自执行 `signtool verify /pa`；Apple 临时 keychain 解锁有效期为 21600 秒，完成后移除 runner 管理员域证书信任并删除 keychain，仍需后续导出、配置并在 Actions 验证平台自签证书与更新签名配置
+Windows payload、uninstaller、setup 在 Authenticode 签名后各自执行 `signtool verify /pa`；Apple 临时 keychain 解锁有效期为 21600 秒，完成后移除 runner 管理员域证书信任并删除 keychain，凭据已导出并配置，完整平台自签与更新签名仍需 Actions 验证
 
 更新日志范围排除当前同点 tag，stable 以上一 stable 为边界以包含 prerelease 中的改动，prerelease 可以上一 prerelease 为边界，未来 HEAD/tag 不混入；脚本用临时 git repo 测试这些边界，多行 secret 的日志脱敏亦有实际进程输出测试
 
@@ -113,10 +115,12 @@ Windows payload、uninstaller、setup 在 Authenticode 签名后各自执行 `si
 
 `node --test scripts/native-release-lib.test.mjs scripts/native-release-metadata.test.mjs scripts/native-release-sign.test.mjs scripts/native-transition.test.mjs`：12 passed，0 failed，覆盖无 Apple 公证账号的自签 preflight、缺证书和 ad hoc 拒绝、证书 SHA1 绑定、DMG 非预期验签错误拒绝及 workflow 临时 runner 信任清理合约；测试使用临时签名 fixture，没有访问本机 keychain 或修改本机证书信任
 
-这组检查与 actionlint 不代表 macOS 实际自签打包或 Windows 签名信任执行通过，两个平台仍需在临时 CI runner 使用实际证书验收；本轮不提交、不推送、不发布
+这组检查与 actionlint 不代表 macOS 实际自签打包或 Windows 签名信任执行通过，两个平台仍需在临时 CI runner 使用实际证书验收；此前轮次未提交、推送或发布，当前发布进度见上文
 
 主进程独立复核上述四份 Node 测试：12/12 passed，两个 native workflow 的 actionlint 与 `git diff --check` 通过；新 Ed25519 key 的独立 sign/verify/tamper 拒绝和文件权限核验均通过
 
-本轮另用 `/usr/bin/true` 的临时副本验证真实 `AQBot Release` 身份，精确证书 SHA1 为 `319F9217A02978A18033419A6023046CEB2825CA`，`codesign --force --sign SHA1 --timestamp=none` 成功，`codesign --verify --strict -R '=certificate leaf = H"319F9217A02978A18033419A6023046CEB2825CA"'` 成功；fixture 已清理，没有弹窗、证书导出、信任或 ACL 修改，这只证明现有本机身份可签，不证明完整 DMG、公证、其他机器信任或 Windows 实际签名已验证
+此前轮次另用 `/usr/bin/true` 的临时副本验证真实 `AQBot Release` 身份，精确证书 SHA1 为 `319F9217A02978A18033419A6023046CEB2825CA`，`codesign --force --sign SHA1 --timestamp=none` 成功，`codesign --verify --strict -R '=certificate leaf = H"319F9217A02978A18033419A6023046CEB2825CA"'` 成功；fixture 已清理，没有弹窗、证书导出、信任或 ACL 修改，这只证明现有本机身份可签，不证明完整 DMG、公证、其他机器信任或 Windows 实际签名已验证
 
-本轮协作审计：`/root/signing_credentials` 负责凭证定位与新 key 验证，`/root/self_signed_release` 负责自签发布流程与文档；工具接受 `gpt-6.1-sol` / `medium` 参数，底层执行模型未独立认证，两项分工最终状态为 completed；未提交、推送、上传 GitHub secrets 或发布
+此前自签准备轮次协作：`/root/signing_credentials` 与 `/root/self_signed_release` 完成凭证定位、新 key 验证及自签流程，当时未提交、推送、上传 GitHub secrets 或发布
+
+本轮协作：`/root/release_version` 负责版本与 Windows 业务兼容修复，`/root/self_signed_release` 负责自签流水线与打包修复，`/root/signing_credentials` 负责凭据配置与本文状态收尾；工具接受 `gpt-6.1-sol` / `medium` 参数，底层执行模型未独立认证，发布与跨平台验收状态以上述 CI 进度为准
