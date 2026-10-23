@@ -3,10 +3,10 @@ import path from 'node:path'
 import os from 'node:os'
 import {spawnSync} from 'node:child_process'
 import {fileURLToPath} from 'node:url'
-import {run,packageWindows,packageMac} from './native-release-package.mjs'
+import {run,packageWindows,packageMac,inspectArchive} from './native-release-package.mjs'
 import {releaseNotes} from './native-release-metadata.mjs'
 import {validateUpdaterSigningSecrets} from './validate-updater-signing-secret.mjs'
-import {assetName,version,signingKeys,nativeManifest,targets,safeEntry} from './native-release-lib.mjs'
+import {assetName,version,signingKeys,nativeManifest,targets} from './native-release-lib.mjs'
 export function preflight(env,target){
  version(env.RELEASE_VERSION)
  releaseNotes(env.RELEASE_NOTES)
@@ -53,9 +53,7 @@ export function build(target,env=process.env){
  if(!target.startsWith('linux'))run(process.execPath,[path.resolve('node_modules/@tauri-apps/cli/tauri.js'),'signer','sign','--private-key',env.TAURI_SIGNING_PRIVATE_KEY,'--password',env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD,path.join(assets,assetName(v,target,target.startsWith('darwin')?'app.tar.gz':'setup.exe'))],env)
 
  // Archive listings must be relative and must never escape the installation root.
- const listing=spawnSync('tar',['-tzf',path.join(assets,archiveName)],{encoding:'utf8'})
- if(listing.status!==0)throw new Error('cannot inspect update archive')
- for(const entry of listing.stdout.trim().split('\n'))safeEntry(entry)
+ inspectArchive(path.join(assets,archiveName),env)
  return assets
 }
 if(process.argv[1]===fileURLToPath(import.meta.url))build(process.argv[2]??`${os.platform()}-${os.arch()}`)

@@ -1,9 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import {spawnSync} from 'node:child_process'
+import {gzipSync,gunzipSync} from 'node:zlib'
 import {generateKeyPairSync} from 'node:crypto'
 import {preflight,macSigningConfig} from './native-release.mjs'
-import {assertUnsignedDMG} from './native-release-package.mjs'
+import {assertUnsignedDMG,archiveTool,inspectArchive} from './native-release-package.mjs'
 import {signWindowsFile,signerCheck} from './native-release-sign.mjs'
 function credentials(){
  const {privateKey,publicKey}=generateKeyPairSync('ed25519')
@@ -40,4 +44,37 @@ test('CI and all packaging paths keep signature checks and temporary trust clean
  assert(sign.includes("[tool,['verify','/pa',file]]"))
  assert(signerCheck.includes("$sig.Status -ne 'Valid'"))
  assert(signerCheck.includes('$sig.SignerCertificate.Thumbprint -ne $env:WINDOWS_SIGN_CERT_SHA1'))
+})
+
+test('Windows archive tool uses the system bsdtar instead of the Git Bash PATH',()=>{
+ assert.equal(archiveTool({SystemRoot:'C:\\Windows'},'win32'),'C:\\Windows\\System32\\tar.exe')
+ for(const name of ['SYSTEMROOT','systemroot'])assert.equal(archiveTool({[name]:'C:\\Windows'},'win32'),'C:\\Windows\\System32\\tar.exe')
+ assert.throws(()=>archiveTool({},'win32'),/SystemRoot/)
+ assert.throws(()=>archiveTool({SystemRoot:'relative'},'win32'),/SystemRoot/)
+ assert.equal(archiveTool({},'darwin'),'tar')
+})
+test('real archive inspection preserves safe entries and rejects traversal and corruption with redacted diagnostics',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'native archive-'))
+ const env={...process.env,COPYFILE_DISABLE:'1',PRIVATE_KEY:'fixture-secret'}
+ try{
+  fs.writeFileSync(path.join(root,'payload.exe'),'archive fixture')
+  const archive=path.join(root,'normal.tar.gz'),tool=archiveTool(env)
+  const created=spawnSync(tool,['-czf',archive,'--format=ustar','-C',root,'payload.exe'],{encoding:'utf8',env})
+  assert.equal(created.status,0,created.stderr)
+  assert.deepEqual(inspectArchive(archive,env),['payload.exe'])
+  const tar=gunzipSync(fs.readFileSync(archive))
+  tar.fill(0,0,100);tar.write('../escape',0);tar.fill(32,148,156)
+  const checksum=tar.subarray(0,512).reduce((sum,byte)=>sum+byte,0)
+  tar.write(checksum.toString(8).padStart(6,'0')+'\0 ',148)
+  const unsafe=path.join(root,'traversal.tar.gz');fs.writeFileSync(unsafe,gzipSync(tar))
+  assert.throws(()=>inspectArchive(unsafe,env),/unsafe archive entry/)
+  const corrupt=path.join(root,'fixture-secret.tar.gz');fs.writeFileSync(corrupt,'broken archive')
+  assert.throws(()=>inspectArchive(corrupt,env),error=>{
+   assert(error.message.includes(`cannot inspect archive with ${tool}`))
+   assert.match(error.message,/\([1-9]\d*\):/)
+   assert(error.message.split(': ').slice(1).join(': ').trim().length>0)
+   assert(!error.message.includes('fixture-secret'))
+   return true
+  })
+ }finally{fs.rmSync(root,{recursive:true,force:true})}
 })

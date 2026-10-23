@@ -132,3 +132,7 @@ Windows payload、uninstaller、setup 在 Authenticode 签名后各自执行 `si
 本机用新建短期自签 fixture 证书、独立临时 keychain 和复制的 `/usr/bin/true` 验证，未修改搜索列表、默认 keychain 或任何证书信任；`codesign --options runtime --timestamp=none --sign SHA1 --keychain TEMP` 和 strict exact-leaf 验签均通过，临时私钥与 keychain 已清理；额外 `--timestamp` 尝试明确返回 `The timestamp service is not available`，生产配置仍保留 mygo 的时间戳要求，不把本机服务连接失败当作签名成功
 
 依据 [Microsoft Import-Certificate](https://learn.microsoft.com/en-us/powershell/module/pki/import-certificate) 明确的 LocalMachine 与 Confirm 参数，以及 [Apple 信任 API 文档](https://developer.apple.com/documentation/security/sectrustsettingssettrustsettings(_:_:_:)) 记载的交互阻塞边界实施；四份 Node 发布测试 12/12 passed、Native Release actionlint 与 diff 检查通过，最终无人值守执行仍由下一轮真实 CI 验收
+
+Windows 第二轮发布在归档列表读取处失败，旧脚本未保留 stderr，不能从该轮日志直接确认实际 tar 路径；[GNU tar 文档](https://www.gnu.org/software/tar/manual/html_node/Option-Summary.html) 明确含冒号的 archive 名称可能被解释为远程地址，Git Bash 的 PATH 可能优先选中该实现，因此 Windows 现固定使用 `%SystemRoot%\System32\tar.exe`，即 [Windows 自带 bsdtar](https://learn.microsoft.com/en-us/windows/tar/)，不按 PATH 回退；列表安全检查、payload 解包、签名后重包、最终归档检查与安装 smoke 统一使用此工具，失败包含工具路径、状态和经脱敏的 stderr，签名及 unsafe-entry 检查保持强制
+
+归档定向回归使用真实 tar 创建临时正常包，验证路径穿越包拒绝和损坏包诊断可见且脱敏，以及 Windows 系统工具路径选择；四份 Node 发布测试现为 14/14 passed，相关脚本语法和 diff 检查通过，Windows 系统 tar 的实际执行由下一轮 CI 验收
