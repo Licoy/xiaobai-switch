@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url'
 import {spawn} from 'node:child_process'
 export function redact(text,env) {
  const values=[...new Set(Object.entries(env).filter(([name,value])=>value&&/(?:KEY|PASSWORD|CERT|TOKEN|APPLE_ID)/.test(name)).flatMap(([,value])=>[value,...value.split(/\r?\n/).filter(Boolean)]))].sort((a,b)=>b.length-a.length)
- for(const value of values)text=text.replaceAll(value,'[REDACTED]')
+ for(const value of values)text=text.replaceAll(value,value.replace(/[^\r\n]+/g,'[REDACTED]'))
  return text
 }
 export function logCommand(file,command,args,env=process.env) {

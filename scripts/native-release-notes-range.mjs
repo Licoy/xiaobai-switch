@@ -7,9 +7,10 @@ export function notesRange(v,cwd=process.cwd()) {
  const git=(...args)=>execFileSync('git',args,{cwd,encoding:'utf8'}).trim()
  const current=git('rev-parse',`refs/tags/v${v}^{commit}`)
  const tags=git('tag','--merged',current).split('\n').filter(tag=>/^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/.test(tag))
+ // The dedicated bridge carries native work, but is not a native release baseline.
  const prior=[]
  for(const tag of tags) {
-  if(git('rev-parse',`refs/tags/${tag}^{commit}`)!==current&&(v.includes('-')||!tag.includes('-')))prior.push(tag)
+  if(tag!=='v0.0.12'&&git('rev-parse',`refs/tags/${tag}^{commit}`)!==current&&(v.includes('-')||!tag.includes('-')))prior.push(tag)
  }
  if(!prior.length)return current
  const previous=git('describe','--tags','--abbrev=0',...prior.flatMap(tag=>['--match',tag]),current)
