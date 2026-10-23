@@ -76,15 +76,15 @@ func legacyWindowLoop(ready chan<- legacyWindowResult, done chan<- error, activa
 	def := user32.NewProc("DefWindowProcW")
 	destroy := user32.NewProc("DestroyWindow")
 	quit := user32.NewProc("PostQuitMessage")
-	callback := syscall.NewCallback(func(window uintptr, message uint32, wparam, lparam uintptr) uintptr {
+	callback := syscall.NewCallback(func(window uintptr, message uint32, wparam uintptr, lparam unsafe.Pointer) uintptr {
 		switch message {
 		case 0x004A:
-			if lparam != 0 && *(*uintptr)(unsafe.Pointer(lparam)) == 1542 {
+			if lparam != nil && *(*uintptr)(lparam) == 1542 {
 				data := (*struct {
 					Tag  uintptr
 					Size uint32
 					Data unsafe.Pointer
-				})(unsafe.Pointer(lparam))
+				})(lparam)
 				if data.Size > 0 && data.Size <= 64*1024 && data.Data != nil {
 					raw := unsafe.Slice((*byte)(data.Data), data.Size)
 					if utf8.Valid(raw) {
@@ -105,7 +105,7 @@ func legacyWindowLoop(ready chan<- legacyWindowResult, done chan<- error, activa
 			quit.Call(0)
 			return 0
 		}
-		result, _, _ := def.Call(window, uintptr(message), wparam, lparam)
+		result, _, _ := def.Call(window, uintptr(message), wparam, uintptr(lparam))
 		return result
 	})
 	const id = "com.github.licoy.xiaobai-switch.app"
