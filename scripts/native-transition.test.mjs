@@ -34,7 +34,7 @@ test('publication requires six signed archives plus immutable bridge',()=>{
  }finally{fs.rmSync(directory,{recursive:true,force:true})}
 })
 test('NSIS stages and verifies native before MSI uninstall, preserves rollback',()=>{
- const source=fs.readFileSync('scripts/native-transition-installer.nsi','utf8')
+ const source=fs.readFileSync('scripts/native-transition-installer.nsi','utf8').replace(/\r\n/g,'\n')
  assert(source.indexOf('nsExec::ExecToStack')<source.indexOf('/x $MsiProduct'))
  for(const root of ['HKCU','HKLM'])for(const view of [32,64])assert(source.includes(`FindMsi ${root} ${view}`))
  assert(source.includes('Rename "$INSTDIR.previous" "$INSTDIR"'))
